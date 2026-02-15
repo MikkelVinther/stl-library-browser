@@ -8,6 +8,7 @@ import { analyzeGeometry } from './utils/geometryAnalysis';
 import { parseSTLHeader } from './utils/stlHeaderParser';
 import { tokenizeFilename } from './utils/filenameTokenizer';
 import { estimateWeight, getPrintSettings } from './utils/printEstimate';
+import ImportReviewPanel from './components/ImportReviewPanel';
 
 const INITIAL_FILES = [
   { id: 1, name: 'Dungeon Wall Section A', size: '2.4 MB', type: 'terrain', tags: ['OpenForge', '28mm', 'dungeon', 'stone', 'medieval'] },
@@ -414,6 +415,15 @@ export default function App() {
             </p>
           </div>
         </div>
+      )}
+
+      {/* ===== Import review panel ===== */}
+      {pendingImports.length > 0 && (
+        <ImportReviewPanel
+          files={pendingImports}
+          onConfirm={confirmImport}
+          onCancel={cancelImport}
+        />
       )}
 
       {/* ===== Mobile top bar ===== */}
