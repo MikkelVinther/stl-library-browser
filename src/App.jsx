@@ -680,6 +680,38 @@ export default function App() {
                 )}
               </div>
 
+              {/* Collection — editable */}
+              {selectedFile.metadata && (
+                <div className="flex items-center gap-2 mt-1 mb-5">
+                  <span className="text-xs text-gray-500">Collection:</span>
+                  <input
+                    type="text"
+                    value={selectedFile.metadata?.collection || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedFile((prev) => ({
+                        ...prev,
+                        metadata: { ...prev.metadata, collection: val },
+                      }));
+                    }}
+                    onBlur={() => {
+                      setFiles((prev) =>
+                        prev.map((f) =>
+                          f.id === selectedFile.id
+                            ? { ...f, metadata: { ...f.metadata, collection: selectedFile.metadata.collection } }
+                            : f
+                        )
+                      );
+                      if (selectedFile.geometry) {
+                        updateFile(selectedFile.id, { metadata: selectedFile.metadata });
+                      }
+                    }}
+                    placeholder="Add to collection..."
+                    className="text-sm bg-transparent border-b border-gray-800 focus:border-blue-500 text-gray-300 placeholder-gray-600 outline-none py-0.5 flex-1"
+                  />
+                </div>
+              )}
+
               {/* Tag management */}
               <div className="border-t border-gray-800 pt-5">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -736,6 +768,105 @@ export default function App() {
                   </button>
                 )}
               </div>
+
+              {/* Metadata sections */}
+              {selectedFile.metadata && (
+                <>
+                  {/* Geometry stats */}
+                  <div className="border-t border-gray-800 pt-5 mt-5">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+                      Geometry
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-500">Triangles</span>
+                        <p className="text-gray-200 font-medium">
+                          {selectedFile.metadata.triangleCount?.toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Dimensions</span>
+                        <p className="text-gray-200 font-medium">
+                          {selectedFile.metadata.dimensions
+                            ? `${selectedFile.metadata.dimensions.x} × ${selectedFile.metadata.dimensions.y} × ${selectedFile.metadata.dimensions.z}`
+                            : '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Surface Area</span>
+                        <p className="text-gray-200 font-medium">
+                          {selectedFile.metadata.surfaceArea?.toLocaleString()} mm²
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Watertight</span>
+                        <p className={`font-medium ${selectedFile.metadata.isWatertight ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {selectedFile.metadata.isWatertight ? 'Yes' : 'No'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Print estimate */}
+                  {selectedFile.metadata.printEstimate?.volumeCm3 != null && (
+                    <div className="border-t border-gray-800 pt-5 mt-5">
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+                        Print Estimate
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-gray-500">Volume</span>
+                          <p className="text-gray-200 font-medium">
+                            {selectedFile.metadata.printEstimate.volumeCm3} cm³
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Est. Weight</span>
+                          <p className="text-gray-200 font-medium">
+                            ~{selectedFile.metadata.printEstimate.estimatedGrams}g
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-600 mt-2">
+                        Based on current print settings. Rough estimate only.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* File info */}
+                  <div className="border-t border-gray-800 pt-5 mt-5">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+                      File Info
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                      {selectedFile.metadata.originalFilename && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Original</span>
+                          <span className="text-gray-300 font-mono text-xs">
+                            {selectedFile.metadata.originalFilename}
+                          </span>
+                        </div>
+                      )}
+                      {selectedFile.metadata.headerText && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Header</span>
+                          <span className="text-gray-300 text-xs truncate max-w-[200px]">
+                            {selectedFile.metadata.headerText}
+                          </span>
+                        </div>
+                      )}
+                      {selectedFile.metadata.importedAt && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Imported</span>
+                          <span className="text-gray-300 text-xs">
+                            {new Date(selectedFile.metadata.importedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
