@@ -4,6 +4,10 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import STLViewer from './components/STLViewer';
 import { renderThumbnail } from './utils/renderThumbnail';
 import { saveFile, getAllFiles, updateFile } from './utils/db';
+import { analyzeGeometry } from './utils/geometryAnalysis';
+import { parseSTLHeader } from './utils/stlHeaderParser';
+import { tokenizeFilename } from './utils/filenameTokenizer';
+import { estimateWeight, getPrintSettings } from './utils/printEstimate';
 
 const INITIAL_FILES = [
   { id: 1, name: 'Dungeon Wall Section A', size: '2.4 MB', type: 'terrain', tags: ['OpenForge', '28mm', 'dungeon', 'stone', 'medieval'] },
@@ -64,6 +68,7 @@ export default function App() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [newTag, setNewTag] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [pendingImports, setPendingImports] = useState([]);
 
   const fileInputRef = useRef(null);
   const dragCounter = useRef(0);
@@ -91,6 +96,7 @@ export default function App() {
           tags: entry.tags,
           thumbnail: entry.thumbnail,
           geometry,
+          metadata: entry.metadata || null,
         };
       });
       setFiles([...restored, ...INITIAL_FILES]);
@@ -179,7 +185,7 @@ export default function App() {
   /* ---- STL file loading ---- */
   const loadSTLFiles = async (fileList) => {
     const loader = new STLLoader();
-    const newFiles = [];
+    const staged = [];
 
     for (const file of fileList) {
       try {
@@ -191,36 +197,54 @@ export default function App() {
         const thumbnail = renderThumbnail(geometry);
         const id = Date.now() + Math.random();
 
-        const entry = {
+        const geoStats = analyzeGeometry(geometry);
+        const headerText = parseSTLHeader(buffer);
+        const suggestedTags = tokenizeFilename(file.name);
+        const settings = getPrintSettings();
+        const estimatedGrams = estimateWeight(geoStats.volume, settings);
+        const volumeCm3 = geoStats.volume != null ? +(geoStats.volume / 1000).toFixed(2) : null;
+
+        staged.push({
           id,
           name: file.name.replace(/\.stl$/i, '').replace(/[_-]/g, ' '),
           size: `${sizeMB} MB`,
-          type: 'terrain',
+          type: 'prop',
           tags: [],
           thumbnail,
           geometry,
-        };
-
-        newFiles.push(entry);
-
-        // Persist to IndexedDB (store raw buffer, not geometry)
-        saveFile({
-          id,
-          name: entry.name,
-          size: entry.size,
-          type: entry.type,
-          tags: entry.tags,
-          thumbnail,
           stlBuffer: buffer,
+          metadata: {
+            ...geoStats,
+            headerText,
+            originalFilename: file.name,
+            suggestedTags,
+            importedAt: Date.now(),
+            lastModified: file.lastModified || null,
+            collection: null,
+            printEstimate: { volumeCm3, estimatedGrams },
+          },
         });
       } catch (err) {
         console.error(`Failed to load ${file.name}:`, err);
       }
     }
 
-    if (newFiles.length > 0) {
-      setFiles((prev) => [...newFiles, ...prev]);
+    if (staged.length > 0) {
+      setPendingImports(staged);
     }
+  };
+
+  const confirmImport = (reviewedFiles) => {
+    setFiles((prev) => [...reviewedFiles, ...prev]);
+    reviewedFiles.forEach((f) => {
+      const { geometry, ...rest } = f;
+      saveFile(rest);
+    });
+    setPendingImports([]);
+  };
+
+  const cancelImport = () => {
+    setPendingImports([]);
   };
 
   const handleFileInput = (e) => {
