@@ -107,10 +107,20 @@ export default function App() {
     });
   }, []);
 
+  const [selectedCollections, setSelectedCollections] = useState([]);
+
   const allTags = useMemo(() => {
     const tags = new Set();
     files.forEach((f) => f.tags.forEach((t) => tags.add(t)));
     return [...tags].sort();
+  }, [files]);
+
+  const allCollections = useMemo(() => {
+    const cols = new Set();
+    files.forEach((f) => {
+      if (f.metadata?.collection) cols.add(f.metadata.collection);
+    });
+    return [...cols].sort();
   }, [files]);
 
   const filteredFiles = useMemo(() => {
@@ -123,9 +133,12 @@ export default function App() {
       const matchesTags =
         selectedTags.length === 0 ||
         selectedTags.every((tag) => file.tags.includes(tag));
-      return matchesSearch && matchesType && matchesTags;
+      const matchesCollection =
+        selectedCollections.length === 0 ||
+        selectedCollections.includes(file.metadata?.collection);
+      return matchesSearch && matchesType && matchesTags && matchesCollection;
     });
-  }, [files, searchTerm, selectedTypes, selectedTags]);
+  }, [files, searchTerm, selectedTypes, selectedTags, selectedCollections]);
 
   const toggleTag = (tag) =>
     setSelectedTags((prev) =>
@@ -135,6 +148,11 @@ export default function App() {
   const toggleType = (type) =>
     setSelectedTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+    );
+
+  const toggleCollection = (col) =>
+    setSelectedCollections((prev) =>
+      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
     );
 
   const openFile = (file) => {
@@ -178,11 +196,12 @@ export default function App() {
     JSON.stringify(fileTagsEdit.slice().sort()) !==
       JSON.stringify(selectedFile.tags.slice().sort());
 
-  const activeFilterCount = selectedTypes.length + selectedTags.length;
+  const activeFilterCount = selectedTypes.length + selectedTags.length + selectedCollections.length;
 
   const clearFilters = () => {
     setSelectedTypes([]);
     setSelectedTags([]);
+    setSelectedCollections([]);
     setSearchTerm('');
   };
 
@@ -433,6 +452,33 @@ export default function App() {
           })}
         </div>
       </div>
+
+      {/* Collection filters */}
+      {allCollections.length > 0 && (
+        <div>
+          <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">
+            Collections
+          </h3>
+          <div className="space-y-1">
+            {allCollections.map((col) => {
+              const active = selectedCollections.includes(col);
+              return (
+                <button
+                  key={col}
+                  onClick={() => toggleCollection(col)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    active
+                      ? 'bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30'
+                      : 'text-gray-400 hover:bg-gray-700/40 hover:text-gray-200'
+                  }`}
+                >
+                  {col}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {activeFilterCount > 0 && (
         <button
