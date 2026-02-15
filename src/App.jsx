@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, X, Tag, File, Box, Layers, Filter, Upload } from 'lucide-react';
+import { Search, X, Tag, File, Box, Layers, Filter, Upload, Check } from 'lucide-react';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import STLViewer from './components/STLViewer';
 import { renderThumbnail } from './utils/renderThumbnail';
@@ -9,6 +9,7 @@ import { parseSTLHeader } from './utils/stlHeaderParser';
 import { tokenizeFilename } from './utils/filenameTokenizer';
 import { estimateWeight, getPrintSettings } from './utils/printEstimate';
 import ImportReviewPanel from './components/ImportReviewPanel';
+import BulkActionBar from './components/BulkActionBar';
 
 const INITIAL_FILES = [
   { id: 1, name: 'Dungeon Wall Section A', size: '2.4 MB', type: 'terrain', tags: ['OpenForge', '28mm', 'dungeon', 'stone', 'medieval'] },
@@ -70,6 +71,8 @@ export default function App() {
   const [newTag, setNewTag] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [pendingImports, setPendingImports] = useState([]);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const bulkMode = selectedIds.size > 0;
 
   const fileInputRef = useRef(null);
   const dragCounter = useRef(0);
@@ -247,6 +250,64 @@ export default function App() {
   const cancelImport = () => {
     setPendingImports([]);
   };
+
+  /* ---- Bulk select mode ---- */
+  const toggleSelect = (id, e) => {
+    e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedIds(new Set(filteredFiles.map((f) => f.id)));
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkAddTags = (tags) => {
+    setFiles((prev) =>
+      prev.map((f) => {
+        if (!selectedIds.has(f.id)) return f;
+        const newTags = [...new Set([...f.tags, ...tags])];
+        if (f.geometry) updateFile(f.id, { tags: newTags });
+        return { ...f, tags: newTags };
+      })
+    );
+  };
+
+  const bulkSetType = (type) => {
+    setFiles((prev) =>
+      prev.map((f) => {
+        if (!selectedIds.has(f.id)) return f;
+        if (f.geometry) updateFile(f.id, { type });
+        return { ...f, type };
+      })
+    );
+  };
+
+  const bulkSetCollection = (collection) => {
+    setFiles((prev) =>
+      prev.map((f) => {
+        if (!selectedIds.has(f.id)) return f;
+        const metadata = { ...(f.metadata || {}), collection };
+        if (f.geometry) updateFile(f.id, { metadata });
+        return { ...f, metadata };
+      })
+    );
+  };
+
+  // Escape to deselect
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && bulkMode) clearSelection();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [bulkMode]);
 
   const handleFileInput = (e) => {
     const stlFiles = [...e.target.files].filter((f) =>
@@ -562,6 +623,23 @@ export default function App() {
                       >
                         {file.type}
                       </span>
+                      {/* Checkbox overlay — shows on hover or in bulk mode */}
+                      <div
+                        className={`absolute top-2.5 left-2.5 z-10 transition-opacity ${
+                          bulkMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        <button
+                          onClick={(e) => toggleSelect(file.id, e)}
+                          className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
+                            selectedIds.has(file.id)
+                              ? 'bg-blue-500 border-blue-500'
+                              : 'border-gray-400 bg-black/30 hover:border-blue-400'
+                          }`}
+                        >
+                          {selectedIds.has(file.id) && <Check className="w-4 h-4 text-white" />}
+                        </button>
+                      </div>
                     </div>
 
                     {/* Info */}
@@ -608,6 +686,19 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* ===== Bulk action bar ===== */}
+      {bulkMode && (
+        <BulkActionBar
+          count={selectedIds.size}
+          totalFiltered={filteredFiles.length}
+          onAddTags={bulkAddTags}
+          onSetType={bulkSetType}
+          onSetCollection={bulkSetCollection}
+          onSelectAll={selectAllFiltered}
+          onClear={clearSelection}
+        />
+      )}
 
       {/* ===== Detail modal ===== */}
       {selectedFile && (
