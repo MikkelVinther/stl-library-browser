@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, X, Tag, File, Box, Layers, Filter, Upload, Check } from 'lucide-react';
+import { Search, X, Tag, File, Box, Layers, Filter, Upload, Check, Settings } from 'lucide-react';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import STLViewer from './components/STLViewer';
 import { renderThumbnail } from './utils/renderThumbnail';
@@ -10,6 +10,7 @@ import { tokenizeFilename } from './utils/filenameTokenizer';
 import { estimateWeight, getPrintSettings } from './utils/printEstimate';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import BulkActionBar from './components/BulkActionBar';
+import PrintSettingsPopover from './components/PrintSettingsPopover';
 
 const INITIAL_FILES = [
   { id: 1, name: 'Dungeon Wall Section A', size: '2.4 MB', type: 'terrain', tags: ['OpenForge', '28mm', 'dungeon', 'stone', 'medieval'] },
@@ -72,6 +73,7 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [pendingImports, setPendingImports] = useState([]);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showPrintSettings, setShowPrintSettings] = useState(false);
   const bulkMode = selectedIds.size > 0;
 
   const fileInputRef = useRef(null);
@@ -165,6 +167,7 @@ export default function App() {
     setSelectedFile(null);
     setFileTagsEdit([]);
     setNewTag('');
+    setShowPrintSettings(false);
   };
 
   const addEditTag = () => {
@@ -947,9 +950,44 @@ export default function App() {
                   {/* Print estimate */}
                   {selectedFile.metadata.printEstimate?.volumeCm3 != null && (
                     <div className="border-t border-gray-800 pt-5 mt-5">
-                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
-                        Print Estimate
-                      </h3>
+                      <div className="relative flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+                          Print Estimate
+                        </h3>
+                        <button
+                          onClick={() => setShowPrintSettings((v) => !v)}
+                          className="p-1 rounded-md hover:bg-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                        </button>
+                        {showPrintSettings && (
+                          <PrintSettingsPopover
+                            onClose={() => setShowPrintSettings(false)}
+                            onSave={(newSettings) => {
+                              const vol = selectedFile.metadata.printEstimate.volumeCm3;
+                              const newGrams = estimateWeight(vol * 1000, newSettings);
+                              const updatedMeta = {
+                                ...selectedFile.metadata,
+                                printEstimate: {
+                                  ...selectedFile.metadata.printEstimate,
+                                  estimatedGrams: newGrams,
+                                },
+                              };
+                              setSelectedFile((prev) => ({ ...prev, metadata: updatedMeta }));
+                              setFiles((prev) =>
+                                prev.map((f) =>
+                                  f.id === selectedFile.id
+                                    ? { ...f, metadata: updatedMeta }
+                                    : f
+                                )
+                              );
+                              if (selectedFile.geometry) {
+                                updateFile(selectedFile.id, { metadata: updatedMeta });
+                              }
+                            }}
+                          />
+                        )}
+                      </div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-gray-500">Volume</span>
