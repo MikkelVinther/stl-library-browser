@@ -1,14 +1,13 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, X, Tag, File, Box, Layers, Filter, Upload, Check, Settings } from 'lucide-react';
+import { Search, X, Tag, File, Box, Layers, Filter, Upload, Check, Settings, FolderOpen } from 'lucide-react';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import STLViewer from './components/STLViewer';
-import { renderThumbnail } from './utils/renderThumbnail';
-import { saveFile, getAllFiles, updateFile } from './utils/db';
-import { analyzeGeometry } from './utils/geometryAnalysis';
-import { parseSTLHeader } from './utils/stlHeaderParser';
-import { tokenizeFilename } from './utils/filenameTokenizer';
-import { estimateWeight, getPrintSettings } from './utils/printEstimate';
+import { saveFile, getAllFiles, updateFile, savePendingFile, confirmPendingFiles, cancelPendingFiles } from './utils/db';
+import { estimateWeight } from './utils/printEstimate';
+import { processFiles } from './utils/processFiles';
+import { scanDirectory, countSTLFiles, wrapFileList } from './utils/directoryScanner';
 import ImportReviewPanel from './components/ImportReviewPanel';
+import ImportProgress from './components/ImportProgress';
 import BulkActionBar from './components/BulkActionBar';
 import PrintSettingsPopover from './components/PrintSettingsPopover';
 
@@ -71,7 +70,15 @@ export default function App() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [newTag, setNewTag] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const [pendingImports, setPendingImports] = useState([]);
+  const [importState, setImportState] = useState({
+    status: 'idle',  // 'idle' | 'scanning' | 'processing' | 'reviewing'
+    files: [],       // grows as files are processed
+    processed: 0,
+    total: 0,
+    currentName: null,
+    errors: [],
+  });
+  const cancelRef = useRef(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showPrintSettings, setShowPrintSettings] = useState(false);
   const bulkMode = selectedIds.size > 0;
@@ -79,33 +86,55 @@ export default function App() {
   const fileInputRef = useRef(null);
   const dragCounter = useRef(0);
 
-  // Load saved files from IndexedDB on mount
+  const [isRestoring, setIsRestoring] = useState(true);
+
+  // Load saved files from IndexedDB on mount — chunked to avoid freezing
   useEffect(() => {
     const loader = new STLLoader();
     getAllFiles().then((saved) => {
-      if (saved.length === 0) return;
-      const restored = saved.map((entry) => {
-        let geometry = null;
-        if (entry.stlBuffer) {
-          try {
-            geometry = loader.parse(entry.stlBuffer);
-            geometry.computeVertexNormals();
-          } catch (e) {
-            console.error(`Failed to restore geometry for ${entry.name}:`, e);
+      if (saved.length === 0) {
+        setIsRestoring(false);
+        return;
+      }
+
+      const CHUNK_SIZE = 3;
+      let i = 0;
+
+      const processChunk = () => {
+        const chunk = saved.slice(i, i + CHUNK_SIZE);
+        const restored = chunk.map((entry) => {
+          let geometry = null;
+          if (entry.stlBuffer) {
+            try {
+              geometry = loader.parse(entry.stlBuffer);
+              geometry.computeVertexNormals();
+            } catch (e) {
+              console.error(`Failed to restore geometry for ${entry.name}:`, e);
+            }
           }
+          return {
+            id: entry.id,
+            name: entry.name,
+            size: entry.size,
+            type: entry.type,
+            tags: entry.tags,
+            thumbnail: entry.thumbnail,
+            geometry,
+            metadata: entry.metadata || null,
+          };
+        });
+
+        setFiles((prev) => [...restored, ...prev]);
+        i += CHUNK_SIZE;
+
+        if (i < saved.length) {
+          setTimeout(processChunk, 0);
+        } else {
+          setIsRestoring(false);
         }
-        return {
-          id: entry.id,
-          name: entry.name,
-          size: entry.size,
-          type: entry.type,
-          tags: entry.tags,
-          thumbnail: entry.thumbnail,
-          geometry,
-          metadata: entry.metadata || null,
-        };
-      });
-      setFiles([...restored, ...INITIAL_FILES]);
+      };
+
+      processChunk();
     });
   }, []);
 
@@ -208,69 +237,67 @@ export default function App() {
     setSearchTerm('');
   };
 
-  /* ---- STL file loading ---- */
-  const loadSTLFiles = async (fileList) => {
-    const loader = new STLLoader();
-    const staged = [];
+  /* ---- Streaming import pipeline ---- */
+  const startImport = async (source, total) => {
+    setImportState({ status: 'processing', files: [], processed: 0, total, currentName: null, errors: [] });
+    cancelRef.current = false;
 
-    for (const file of fileList) {
-      try {
-        const buffer = await file.arrayBuffer();
-        const geometry = loader.parse(buffer);
-        geometry.computeVertexNormals();
-
-        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-        const thumbnail = renderThumbnail(geometry);
-        const id = Date.now() + Math.random();
-
-        const geoStats = analyzeGeometry(geometry);
-        const headerText = parseSTLHeader(buffer);
-        const suggestedTags = tokenizeFilename(file.name);
-        const settings = getPrintSettings();
-        const estimatedGrams = estimateWeight(geoStats.volume, settings);
-        const volumeCm3 = geoStats.volume != null ? +(geoStats.volume / 1000).toFixed(2) : null;
-
-        staged.push({
-          id,
-          name: file.name.replace(/\.stl$/i, '').replace(/[_-]/g, ' '),
-          size: `${sizeMB} MB`,
-          type: 'prop',
-          tags: [],
-          thumbnail,
-          geometry,
-          stlBuffer: buffer,
-          metadata: {
-            ...geoStats,
-            headerText,
-            originalFilename: file.name,
-            suggestedTags,
-            importedAt: Date.now(),
-            lastModified: file.lastModified || null,
-            collection: null,
-            printEstimate: { volumeCm3, estimatedGrams },
-          },
-        });
-      } catch (err) {
-        console.error(`Failed to load ${file.name}:`, err);
-      }
-    }
-
-    if (staged.length > 0) {
-      setPendingImports(staged);
-    }
-  };
-
-  const confirmImport = (reviewedFiles) => {
-    setFiles((prev) => [...reviewedFiles, ...prev]);
-    reviewedFiles.forEach((f) => {
-      const { geometry, ...rest } = f;
-      saveFile(rest);
+    await processFiles(source, {
+      onFileProcessed: (entry) => {
+        // Save to IndexedDB as pending (strip geometry — not serializable)
+        const { geometry, ...rest } = entry;
+        savePendingFile(rest);
+        setImportState((prev) => ({
+          ...prev,
+          files: [...prev.files, entry],
+          processed: prev.processed + 1,
+        }));
+      },
+      onProgress: ({ currentName }) => {
+        setImportState((prev) => ({ ...prev, currentName }));
+      },
+      onError: (name, err) => {
+        console.error(`Failed to process ${name}:`, err);
+        setImportState((prev) => ({
+          ...prev,
+          errors: [...prev.errors, { name, err }],
+          processed: prev.processed + 1,
+        }));
+      },
+      shouldCancel: () => cancelRef.current,
     });
-    setPendingImports([]);
+
+    setImportState((prev) => ({ ...prev, status: 'reviewing', currentName: null }));
   };
 
-  const cancelImport = () => {
-    setPendingImports([]);
+  const handleOpenFolder = async () => {
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      setImportState((prev) => ({ ...prev, status: 'scanning' }));
+      const total = await countSTLFiles(dirHandle);
+      if (total === 0) {
+        setImportState({ status: 'idle', files: [], processed: 0, total: 0, currentName: null, errors: [] });
+        return;
+      }
+      await startImport(scanDirectory(dirHandle), total);
+    } catch (err) {
+      // User cancelled the picker
+      if (err.name !== 'AbortError') console.error('Folder import error:', err);
+      setImportState({ status: 'idle', files: [], processed: 0, total: 0, currentName: null, errors: [] });
+    }
+  };
+
+  const confirmImport = async (reviewedFiles) => {
+    const ids = reviewedFiles.map((f) => f.id);
+    await confirmPendingFiles(ids);
+    setFiles((prev) => [...reviewedFiles, ...prev]);
+    setImportState({ status: 'idle', files: [], processed: 0, total: 0, currentName: null, errors: [] });
+  };
+
+  const cancelImport = async () => {
+    cancelRef.current = true;
+    await cancelPendingFiles();
+    setImportState({ status: 'idle', files: [], processed: 0, total: 0, currentName: null, errors: [] });
   };
 
   /* ---- Bulk select mode ---- */
@@ -335,7 +362,7 @@ export default function App() {
     const stlFiles = [...e.target.files].filter((f) =>
       f.name.toLowerCase().endsWith('.stl')
     );
-    if (stlFiles.length > 0) loadSTLFiles(stlFiles);
+    if (stlFiles.length > 0) startImport(wrapFileList(stlFiles), stlFiles.length);
     e.target.value = '';
   };
 
@@ -368,19 +395,26 @@ export default function App() {
     const stlFiles = [...e.dataTransfer.files].filter((f) =>
       f.name.toLowerCase().endsWith('.stl')
     );
-    if (stlFiles.length > 0) loadSTLFiles(stlFiles);
+    if (stlFiles.length > 0) startImport(wrapFileList(stlFiles), stlFiles.length);
   };
 
   /* ---- Shared filter panel content ---- */
   const renderFilters = (isMobile) => (
     <div className="space-y-6">
-      {/* Import button */}
+      {/* Import buttons */}
       <button
         onClick={() => fileInputRef.current?.click()}
         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
       >
         <Upload className="w-4 h-4" />
         Import STL Files
+      </button>
+      <button
+        onClick={handleOpenFolder}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-semibold rounded-lg transition-colors"
+      >
+        <FolderOpen className="w-4 h-4" />
+        Open Folder
       </button>
 
       {/* Search — only in desktop sidebar (mobile has its own in the top bar) */}
@@ -527,12 +561,28 @@ export default function App() {
         </div>
       )}
 
+      {/* ===== Import progress bar ===== */}
+      {importState.status === 'processing' && (
+        <ImportProgress
+          processed={importState.processed}
+          total={importState.total}
+          currentName={importState.currentName}
+          errors={importState.errors.length}
+          isComplete={false}
+          onCancel={cancelImport}
+          onOpenReview={() => {}}
+        />
+      )}
+
       {/* ===== Import review panel ===== */}
-      {pendingImports.length > 0 && (
+      {(importState.status === 'processing' || importState.status === 'reviewing') && (
         <ImportReviewPanel
-          files={pendingImports}
+          files={importState.files}
           onConfirm={confirmImport}
           onCancel={cancelImport}
+          isProcessing={importState.status === 'processing'}
+          processedCount={importState.processed}
+          totalCount={importState.total}
         />
       )}
 
