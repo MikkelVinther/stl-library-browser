@@ -660,6 +660,12 @@ export default function App() {
 
         {/* Main content */}
         <main className="flex-1 min-w-0 p-4 lg:p-6">
+          {isRestoring && (
+            <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-400">
+              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              Restoring library...
+            </div>
+          )}
           <div className="mb-5 flex items-baseline justify-between">
             <p className="text-sm text-gray-500">
               <span className="text-gray-300 font-semibold">

@@ -12,7 +12,7 @@ import { estimateWeight, getPrintSettings } from './printEstimate';
  * @param {AsyncIterable<{file: File, relativePath: string}>} source
  * @param {Object} callbacks
  * @param {function} callbacks.onFileProcessed - Called with processed entry after each file
- * @param {function} callbacks.onProgress - Called with {processed, total, currentName} after each file
+ * @param {function} callbacks.onProgress - Called with {processed, currentName} after each file
  * @param {function} callbacks.onError - Called with (filename, error) on per-file failure
  * @param {function} [callbacks.shouldCancel] - Returns true to stop processing
  */
