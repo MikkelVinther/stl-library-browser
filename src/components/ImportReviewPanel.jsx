@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Check, Loader2 } from 'lucide-react';
 
 const FILE_TYPES = [
   { value: 'terrain', label: 'Terrain' },
@@ -8,7 +8,14 @@ const FILE_TYPES = [
   { value: 'scatter', label: 'Scatter' },
 ];
 
-export default function ImportReviewPanel({ files, onConfirm, onCancel }) {
+export default function ImportReviewPanel({
+  files,
+  onConfirm,
+  onCancel,
+  isProcessing = false,
+  processedCount = 0,
+  totalCount = 0,
+}) {
   const [editedFiles, setEditedFiles] = useState(() =>
     files.map((f) => ({
       ...f,
@@ -18,6 +25,22 @@ export default function ImportReviewPanel({ files, onConfirm, onCancel }) {
   const [bulkCollection, setBulkCollection] = useState('');
   const [bulkTag, setBulkTag] = useState('');
   const [bulkType, setBulkType] = useState('');
+  const prevLenRef = useRef(files.length);
+  const listEndRef = useRef(null);
+
+  // Append new files as they arrive from the streaming pipeline
+  useEffect(() => {
+    if (files.length > prevLenRef.current) {
+      const newFiles = files.slice(prevLenRef.current).map((f) => ({
+        ...f,
+        pendingSuggestions: [...(f.metadata?.suggestedTags || [])],
+      }));
+      setEditedFiles((prev) => [...prev, ...newFiles]);
+      // Auto-scroll to bottom to show latest file
+      setTimeout(() => listEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    }
+    prevLenRef.current = files.length;
+  }, [files.length]);
 
   const updateFile = (id, updates) => {
     setEditedFiles((prev) =>
@@ -98,6 +121,10 @@ export default function ImportReviewPanel({ files, onConfirm, onCancel }) {
     onConfirm(cleaned);
   };
 
+  const headerText = isProcessing
+    ? `Importing... (${processedCount} of ${totalCount})`
+    : `Import ${editedFiles.length} file${editedFiles.length !== 1 ? 's' : ''}`;
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Backdrop */}
@@ -107,9 +134,10 @@ export default function ImportReviewPanel({ files, onConfirm, onCancel }) {
       <div className="relative bg-gray-900 border-t border-gray-700 rounded-t-2xl max-h-[85vh] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-          <h2 className="text-lg font-bold">
-            Import {editedFiles.length} file{editedFiles.length !== 1 && 's'}
-          </h2>
+          <div className="flex items-center gap-3">
+            {isProcessing && <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />}
+            <h2 className="text-lg font-bold">{headerText}</h2>
+          </div>
           <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-800 transition-colors">
             <X className="w-5 h-5 text-gray-400" />
           </button>
@@ -191,6 +219,7 @@ export default function ImportReviewPanel({ files, onConfirm, onCancel }) {
               </div>
             </div>
           ))}
+          <div ref={listEndRef} />
         </div>
 
         {/* Bulk apply bar */}
@@ -246,9 +275,10 @@ export default function ImportReviewPanel({ files, onConfirm, onCancel }) {
             </button>
             <button
               onClick={handleConfirm}
-              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
+              disabled={isProcessing}
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold rounded-lg transition-colors"
             >
-              Import
+              {isProcessing ? 'Processing...' : 'Import'}
             </button>
           </div>
         </div>
