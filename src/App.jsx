@@ -3,37 +3,44 @@ import { Search, X, Tag, File, Box, Layers, Filter, Upload, Check, Settings, Fol
 import STLViewer from './components/STLViewer';
 import { getAllFiles, updateFile, savePendingFile, confirmPendingFiles,
          cancelPendingFiles, openFolder, scanDirectory, readFile,
-         getAllDirectories, saveDirectory } from './utils/electronBridge';
+         getAllDirectories, saveDirectory, bulkSetCategoryValues,
+         setCategoryValues, bulkSetCategoryValue } from './utils/electronBridge';
 import { estimateWeight } from './utils/printEstimate';
 import { processFiles } from './utils/processFiles';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import ImportProgress from './components/ImportProgress';
 import BulkActionBar from './components/BulkActionBar';
 import PrintSettingsPopover from './components/PrintSettingsPopover';
+import { CATEGORY_IDS, CATEGORY_LABELS } from './utils/categoryClassifier';
 
-const FILE_TYPES = [
-  { value: 'terrain', label: 'Terrain', icon: Box },
-  { value: 'tile', label: 'Tiles', icon: Layers },
-  { value: 'prop', label: 'Props', icon: File },
-  { value: 'scatter', label: 'Scatter', icon: Tag },
-];
-
-const TYPE_STYLES = {
-  terrain: { gradient: 'from-slate-700 to-slate-600', badge: 'bg-slate-600' },
-  tile: { gradient: 'from-indigo-800 to-blue-700', badge: 'bg-indigo-600' },
-  prop: { gradient: 'from-amber-800 to-orange-700', badge: 'bg-amber-700' },
+// Role-based styling (replaces old TYPE_STYLES)
+const ROLE_STYLES = {
   scatter: { gradient: 'from-emerald-800 to-green-700', badge: 'bg-emerald-700' },
+  tile: { gradient: 'from-indigo-800 to-blue-700', badge: 'bg-indigo-600' },
+  terrain: { gradient: 'from-slate-700 to-slate-600', badge: 'bg-slate-600' },
+  prop: { gradient: 'from-amber-800 to-orange-700', badge: 'bg-amber-700' },
+  monster: { gradient: 'from-red-800 to-rose-700', badge: 'bg-red-700' },
+  miniature: { gradient: 'from-purple-800 to-violet-700', badge: 'bg-purple-700' },
+  base: { gradient: 'from-cyan-800 to-teal-700', badge: 'bg-cyan-700' },
 };
 
-const TYPE_ICON_MAP = { terrain: Box, tile: Layers, prop: File, scatter: Tag };
+const DEFAULT_STYLE = { gradient: 'from-gray-800 to-gray-700', badge: 'bg-gray-600' };
+
+const ROLE_ICON_MAP = { terrain: Box, tile: Layers, prop: File, scatter: Tag };
+
+function getRoleStyle(role) {
+  return ROLE_STYLES[role] || DEFAULT_STYLE;
+}
 
 export default function App() {
   const [files, setFiles] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
-  const [selectedTypes, setSelectedTypes] = useState([]);
+  const [selectedCategories, setSelectedCategories] = useState({});
+  // Shape: { creator: ['Death x Tiles'], role: ['scatter', 'tile'] }
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileTagsEdit, setFileTagsEdit] = useState([]);
+  const [fileCategoriesEdit, setFileCategoriesEdit] = useState({});
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [newTag, setNewTag] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -66,20 +73,26 @@ export default function App() {
     getAllDirectories().then(setDirectories);
   }, []);
 
-  const [selectedCollections, setSelectedCollections] = useState([]);
-
   const allTags = useMemo(() => {
     const tags = new Set();
-    files.forEach((f) => f.tags.forEach((t) => tags.add(t)));
+    files.forEach((f) => f.tags?.forEach((t) => tags.add(t)));
     return [...tags].sort();
   }, [files]);
 
-  const allCollections = useMemo(() => {
-    const cols = new Set();
-    files.forEach((f) => {
-      if (f.metadata?.collection) cols.add(f.metadata.collection);
-    });
-    return [...cols].sort();
+  // Compute category facets: { [catId]: { [value]: count } }
+  const categoryFacets = useMemo(() => {
+    const facets = {};
+    for (const catId of CATEGORY_IDS) {
+      const values = {};
+      for (const f of files) {
+        const val = f.categories?.[catId];
+        if (val) values[val] = (values[val] || 0) + 1;
+      }
+      if (Object.keys(values).length > 0) {
+        facets[catId] = values;
+      }
+    }
+    return facets;
   }, [files]);
 
   const filteredFiles = useMemo(() => {
@@ -87,36 +100,47 @@ export default function App() {
       const matchesSearch =
         !searchTerm ||
         file.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesType =
-        selectedTypes.length === 0 || selectedTypes.includes(file.type);
       const matchesTags =
         selectedTags.length === 0 ||
-        selectedTags.every((tag) => file.tags.includes(tag));
-      const matchesCollection =
-        selectedCollections.length === 0 ||
-        selectedCollections.includes(file.metadata?.collection);
-      return matchesSearch && matchesType && matchesTags && matchesCollection;
+        selectedTags.every((tag) => file.tags?.includes(tag));
+      // Check all selected category filters
+      const matchesCategories = Object.entries(selectedCategories).every(
+        ([catId, values]) =>
+          values.length === 0 || values.includes(file.categories?.[catId])
+      );
+      return matchesSearch && matchesTags && matchesCategories;
     });
-  }, [files, searchTerm, selectedTypes, selectedTags, selectedCollections]);
+  }, [files, searchTerm, selectedTags, selectedCategories]);
 
   const toggleTag = (tag) =>
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
 
-  const toggleType = (type) =>
-    setSelectedTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
-    );
+  const toggleCategoryValue = (catId, value) => {
+    setSelectedCategories((prev) => {
+      const current = prev[catId] || [];
+      const next = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+      return { ...prev, [catId]: next };
+    });
+  };
 
-  const toggleCollection = (col) =>
-    setSelectedCollections((prev) =>
-      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
-    );
+  const activeFilterCount =
+    selectedTags.length +
+    Object.values(selectedCategories).reduce((sum, vals) => sum + vals.length, 0);
+
+  const clearFilters = () => {
+    setSelectedTags([]);
+    setSelectedCategories({});
+    setSearchTerm('');
+  };
 
   const openFile = (file) => {
     setSelectedFile(file);
-    setFileTagsEdit([...file.tags]);
+    setFileTagsEdit([...(file.tags || [])]);
+    setFileCategoriesEdit({ ...(file.categories || {}) });
     setNewTag('');
     setViewerState({ status: 'idle', geometry: null });
   };
@@ -126,6 +150,7 @@ export default function App() {
     setViewerState({ status: 'idle', geometry: null });
     setSelectedFile(null);
     setFileTagsEdit([]);
+    setFileCategoriesEdit({});
     setNewTag('');
     setShowPrintSettings(false);
   };
@@ -167,19 +192,24 @@ export default function App() {
     updateFile(selectedFile.id, { tags: fileTagsEdit });
   };
 
+  const saveCategories = () => {
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.id === selectedFile.id ? { ...f, categories: fileCategoriesEdit } : f
+      )
+    );
+    setSelectedFile((prev) => ({ ...prev, categories: fileCategoriesEdit }));
+    updateFile(selectedFile.id, { categories: fileCategoriesEdit });
+  };
+
   const tagsChanged =
     selectedFile &&
     JSON.stringify(fileTagsEdit.slice().sort()) !==
-      JSON.stringify(selectedFile.tags.slice().sort());
+      JSON.stringify((selectedFile.tags || []).slice().sort());
 
-  const activeFilterCount = selectedTypes.length + selectedTags.length + selectedCollections.length;
-
-  const clearFilters = () => {
-    setSelectedTypes([]);
-    setSelectedTags([]);
-    setSelectedCollections([]);
-    setSearchTerm('');
-  };
+  const categoriesChanged =
+    selectedFile &&
+    JSON.stringify(fileCategoriesEdit) !== JSON.stringify(selectedFile.categories || {});
 
   /* ---- Import pipeline ---- */
   const handleOpenFolder = async () => {
@@ -231,6 +261,13 @@ export default function App() {
   const confirmImport = async (reviewedFiles) => {
     const ids = reviewedFiles.map((f) => f.id);
     await confirmPendingFiles(ids);
+    // Save category values to DB
+    const entries = reviewedFiles
+      .filter((f) => f.categories && Object.keys(f.categories).length > 0)
+      .map((f) => ({ fileId: f.id, categories: f.categories }));
+    if (entries.length > 0) {
+      await bulkSetCategoryValues(entries);
+    }
     setFiles((prev) => [...reviewedFiles, ...prev]);
     setImportState({ status: 'idle', files: [], processed: 0, total: 0, currentName: null, errors: [] });
   };
@@ -262,32 +299,23 @@ export default function App() {
     setFiles((prev) =>
       prev.map((f) => {
         if (!selectedIds.has(f.id)) return f;
-        const newTags = [...new Set([...f.tags, ...tags])];
+        const newTags = [...new Set([...(f.tags || []), ...tags])];
         updateFile(f.id, { tags: newTags });
         return { ...f, tags: newTags };
       })
     );
   };
 
-  const bulkSetType = (type) => {
+  const bulkSetCategory = (catId, value) => {
+    const ids = [...selectedIds];
     setFiles((prev) =>
       prev.map((f) => {
         if (!selectedIds.has(f.id)) return f;
-        updateFile(f.id, { type });
-        return { ...f, type };
+        const categories = { ...(f.categories || {}), [catId]: value };
+        return { ...f, categories };
       })
     );
-  };
-
-  const bulkSetCollection = (collection) => {
-    setFiles((prev) =>
-      prev.map((f) => {
-        if (!selectedIds.has(f.id)) return f;
-        const metadata = { ...(f.metadata || {}), collection };
-        updateFile(f.id, { metadata });
-        return { ...f, metadata };
-      })
-    );
+    bulkSetCategoryValue(ids, catId, value);
   };
 
   // Escape to deselect
@@ -303,13 +331,12 @@ export default function App() {
     const stlFiles = [...fileList].filter((f) => f.name.toLowerCase().endsWith('.stl'));
     if (stlFiles.length === 0) return;
 
-    // Convert browser File objects to the shape processFiles expects
     const fileInfos = stlFiles.map((f) => ({
       relativePath: f.name,
-      fullPath: f.path || null, // Electron provides f.path for dropped files
+      fullPath: f.path || null,
       sizeBytes: f.size,
       lastModified: f.lastModified,
-      _browserFile: f, // Keep reference for reading if no path
+      _browserFile: f,
     }));
 
     setImportState({ status: 'processing', files: [], processed: 0, total: fileInfos.length, currentName: null, errors: [] });
@@ -371,7 +398,6 @@ export default function App() {
     e.stopPropagation();
     dragCounter.current = 0;
     setIsDragging(false);
-
     handleDroppedFiles(e.dataTransfer.files);
   };
 
@@ -394,7 +420,7 @@ export default function App() {
         Open Folder
       </button>
 
-      {/* Search — only in desktop sidebar (mobile has its own in the top bar) */}
+      {/* Search — only in desktop sidebar */}
       {!isMobile && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
@@ -416,77 +442,61 @@ export default function App() {
         </div>
       )}
 
-      {/* Type filters */}
-      <div>
-        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">
-          Type
-        </h3>
-        <div className="space-y-1">
-          {FILE_TYPES.map(({ value, label, icon: Icon }) => {
-            const active = selectedTypes.includes(value);
-            return (
-              <button
-                key={value}
-                onClick={() => toggleType(value)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  active
-                    ? 'bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30'
-                    : 'text-gray-400 hover:bg-gray-700/40 hover:text-gray-200'
-                }`}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Dynamic category filters */}
+      {CATEGORY_IDS.map((catId) => {
+        const values = categoryFacets[catId];
+        if (!values) return null;
+        const sorted = Object.entries(values).sort((a, b) => b[1] - a[1]);
+        const selected = selectedCategories[catId] || [];
+
+        return (
+          <div key={catId}>
+            <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">
+              {CATEGORY_LABELS[catId]}
+            </h3>
+            <div className="space-y-1">
+              {sorted.map(([value, count]) => {
+                const active = selected.includes(value);
+                return (
+                  <button
+                    key={value}
+                    onClick={() => toggleCategoryValue(catId, value)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      active
+                        ? 'bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30'
+                        : 'text-gray-400 hover:bg-gray-700/40 hover:text-gray-200'
+                    }`}
+                  >
+                    <span className="truncate">{value}</span>
+                    <span className="text-xs text-gray-600 ml-2 flex-shrink-0">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
 
       {/* Tag filters */}
-      <div>
-        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">
-          Tags
-        </h3>
-        <div className="flex flex-wrap gap-1.5">
-          {allTags.map((tag) => {
-            const active = selectedTags.includes(tag);
-            return (
-              <button
-                key={tag}
-                onClick={() => toggleTag(tag)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
-                  active
-                    ? 'bg-blue-500 text-white shadow-md shadow-blue-500/25'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200 ring-1 ring-gray-700'
-                }`}
-              >
-                {tag}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Collection filters */}
-      {allCollections.length > 0 && (
+      {allTags.length > 0 && (
         <div>
           <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">
-            Collections
+            Tags
           </h3>
-          <div className="space-y-1">
-            {allCollections.map((col) => {
-              const active = selectedCollections.includes(col);
+          <div className="flex flex-wrap gap-1.5">
+            {allTags.map((tag) => {
+              const active = selectedTags.includes(tag);
               return (
                 <button
-                  key={col}
-                  onClick={() => toggleCollection(col)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  key={tag}
+                  onClick={() => toggleTag(tag)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
                     active
-                      ? 'bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30'
-                      : 'text-gray-400 hover:bg-gray-700/40 hover:text-gray-200'
+                      ? 'bg-blue-500 text-white shadow-md shadow-blue-500/25'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200 ring-1 ring-gray-700'
                   }`}
                 >
-                  {col}
+                  {tag}
                 </button>
               );
             })}
@@ -664,8 +674,9 @@ export default function App() {
           {filteredFiles.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredFiles.map((file) => {
-                const TypeIcon = TYPE_ICON_MAP[file.type] || Box;
-                const style = TYPE_STYLES[file.type];
+                const role = file.categories?.role;
+                const style = getRoleStyle(role);
+                const RoleIcon = ROLE_ICON_MAP[role] || Box;
                 return (
                   <button
                     key={file.id}
@@ -696,15 +707,17 @@ export default function App() {
                               backgroundSize: '20px 20px',
                             }}
                           />
-                          <TypeIcon className="w-14 h-14 text-white/10 group-hover:text-white/20 transition-colors duration-300" />
+                          <RoleIcon className="w-14 h-14 text-white/10 group-hover:text-white/20 transition-colors duration-300" />
                         </>
                       )}
-                      <span
-                        className={`absolute top-2.5 right-2.5 ${style.badge} text-white/90 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md z-10`}
-                      >
-                        {file.type}
-                      </span>
-                      {/* Checkbox overlay — shows on hover or in bulk mode */}
+                      {role && (
+                        <span
+                          className={`absolute top-2.5 right-2.5 ${style.badge} text-white/90 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md z-10`}
+                        >
+                          {role}
+                        </span>
+                      )}
+                      {/* Checkbox overlay */}
                       <div
                         className={`absolute top-2.5 left-2.5 z-10 transition-opacity ${
                           bulkMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
@@ -730,9 +743,14 @@ export default function App() {
                       </h3>
                       <p className="text-xs text-gray-500 mt-1 font-medium">
                         {file.size}
+                        {file.categories?.creator && (
+                          <span className="ml-2 text-gray-600">
+                            {file.categories.creator}
+                          </span>
+                        )}
                       </p>
                       <div className="flex flex-wrap gap-1 mt-2.5">
-                        {file.tags.slice(0, 3).map((tag) => (
+                        {(file.tags || []).slice(0, 3).map((tag) => (
                           <span
                             key={tag}
                             className="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] text-gray-500 ring-1 ring-gray-800"
@@ -740,7 +758,7 @@ export default function App() {
                             {tag}
                           </span>
                         ))}
-                        {file.tags.length > 3 && (
+                        {(file.tags || []).length > 3 && (
                           <span className="px-1.5 py-0.5 text-[10px] text-gray-600">
                             +{file.tags.length - 3}
                           </span>
@@ -774,8 +792,7 @@ export default function App() {
           count={selectedIds.size}
           totalFiltered={filteredFiles.length}
           onAddTags={bulkAddTags}
-          onSetType={bulkSetType}
-          onSetCollection={bulkSetCollection}
+          onSetCategory={bulkSetCategory}
           onSelectAll={selectAllFiltered}
           onClear={clearSelection}
         />
@@ -797,66 +814,72 @@ export default function App() {
               <X className="w-4 h-4 text-gray-300" />
             </button>
 
-            {/* Large preview — lazy 3D loading */}
-            <div
-              className={`relative h-72 sm:h-80 ${
-                viewerState.status === 'loaded'
-                  ? 'bg-gray-950'
-                  : `bg-gradient-to-br ${TYPE_STYLES[selectedFile.type].gradient}`
-              } flex items-center justify-center rounded-t-2xl overflow-hidden`}
-            >
-              {viewerState.status === 'loaded' ? (
-                <STLViewer
-                  geometry={viewerState.geometry}
-                  interactive
-                  className="w-full h-full"
-                />
-              ) : viewerState.status === 'loading' ? (
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="w-10 h-10 text-white/40 animate-spin" />
-                  <p className="text-sm text-white/40">Loading 3D model...</p>
-                </div>
-              ) : viewerState.status === 'error' ? (
-                <div className="flex flex-col items-center gap-2">
-                  <X className="w-10 h-10 text-red-400/60" />
-                  <p className="text-sm text-red-400/60">Failed to load model</p>
-                </div>
-              ) : (
-                <>
-                  {selectedFile.thumbnail ? (
-                    <img
-                      src={selectedFile.thumbnail}
-                      alt={selectedFile.name}
-                      className="w-full h-full object-contain"
+            {/* Large preview */}
+            {(() => {
+              const role = selectedFile.categories?.role;
+              const style = getRoleStyle(role);
+              return (
+                <div
+                  className={`relative h-72 sm:h-80 ${
+                    viewerState.status === 'loaded'
+                      ? 'bg-gray-950'
+                      : `bg-gradient-to-br ${style.gradient}`
+                  } flex items-center justify-center rounded-t-2xl overflow-hidden`}
+                >
+                  {viewerState.status === 'loaded' ? (
+                    <STLViewer
+                      geometry={viewerState.geometry}
+                      interactive
+                      className="w-full h-full"
                     />
+                  ) : viewerState.status === 'loading' ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="w-10 h-10 text-white/40 animate-spin" />
+                      <p className="text-sm text-white/40">Loading 3D model...</p>
+                    </div>
+                  ) : viewerState.status === 'error' ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <X className="w-10 h-10 text-red-400/60" />
+                      <p className="text-sm text-red-400/60">Failed to load model</p>
+                    </div>
                   ) : (
                     <>
-                      <div
-                        className="absolute inset-0 opacity-[0.04]"
-                        style={{
-                          backgroundImage:
-                            'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
-                          backgroundSize: '24px 24px',
-                        }}
-                      />
-                      {React.createElement(
-                        TYPE_ICON_MAP[selectedFile.type] || Box,
-                        { className: 'w-24 h-24 text-white/10' }
+                      {selectedFile.thumbnail ? (
+                        <img
+                          src={selectedFile.thumbnail}
+                          alt={selectedFile.name}
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <>
+                          <div
+                            className="absolute inset-0 opacity-[0.04]"
+                            style={{
+                              backgroundImage:
+                                'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
+                              backgroundSize: '24px 24px',
+                            }}
+                          />
+                          {React.createElement(
+                            ROLE_ICON_MAP[role] || Box,
+                            { className: 'w-24 h-24 text-white/10' }
+                          )}
+                        </>
+                      )}
+                      {selectedFile.fullPath && (
+                        <button
+                          onClick={handleLoad3D}
+                          className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg shadow-lg transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                          Load 3D Model
+                        </button>
                       )}
                     </>
                   )}
-                  {selectedFile.fullPath && (
-                    <button
-                      onClick={handleLoad3D}
-                      className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg shadow-lg transition-colors"
-                    >
-                      <Eye className="w-4 h-4" />
-                      Load 3D Model
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+                </div>
+              );
+            })()}
 
             {/* Content */}
             <div className="p-6">
@@ -867,13 +890,13 @@ export default function App() {
                 <span className="text-sm text-gray-400 font-medium">
                   {selectedFile.size}
                 </span>
-                <span
-                  className={`${
-                    TYPE_STYLES[selectedFile.type].badge
-                  } text-white text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-md`}
-                >
-                  {selectedFile.type}
-                </span>
+                {selectedFile.categories?.role && (
+                  <span
+                    className={`${getRoleStyle(selectedFile.categories.role).badge} text-white text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-md`}
+                  >
+                    {selectedFile.categories.role}
+                  </span>
+                )}
                 {viewerState.status === 'loaded' && (
                   <span className="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-md bg-blue-600 text-white">
                     3D
@@ -881,35 +904,41 @@ export default function App() {
                 )}
               </div>
 
-              {/* Collection — editable */}
-              {selectedFile.metadata && (
-                <div className="flex items-center gap-2 mt-1 mb-5">
-                  <span className="text-xs text-gray-500">Collection:</span>
-                  <input
-                    type="text"
-                    value={selectedFile.metadata?.collection || ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedFile((prev) => ({
-                        ...prev,
-                        metadata: { ...prev.metadata, collection: val },
-                      }));
-                    }}
-                    onBlur={() => {
-                      setFiles((prev) =>
-                        prev.map((f) =>
-                          f.id === selectedFile.id
-                            ? { ...f, metadata: { ...f.metadata, collection: selectedFile.metadata.collection } }
-                            : f
-                        )
-                      );
-                      updateFile(selectedFile.id, { metadata: selectedFile.metadata });
-                    }}
-                    placeholder="Add to collection..."
-                    className="text-sm bg-transparent border-b border-gray-800 focus:border-blue-500 text-gray-300 placeholder-gray-600 outline-none py-0.5 flex-1"
-                  />
+              {/* Categories — editable */}
+              <div className="border-t border-gray-800 pt-5 mb-5">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+                  Categories
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  {CATEGORY_IDS.map((catId) => (
+                    <div key={catId}>
+                      <label className="text-[10px] text-gray-600 uppercase tracking-wider">
+                        {CATEGORY_LABELS[catId]}
+                      </label>
+                      <input
+                        type="text"
+                        value={fileCategoriesEdit[catId] || ''}
+                        onChange={(e) => {
+                          setFileCategoriesEdit((prev) => ({
+                            ...prev,
+                            [catId]: e.target.value || undefined,
+                          }));
+                        }}
+                        placeholder="—"
+                        className="w-full text-sm bg-transparent border-b border-gray-800 focus:border-blue-500 text-gray-300 placeholder-gray-700 outline-none py-1"
+                      />
+                    </div>
+                  ))}
                 </div>
-              )}
+                {categoriesChanged && (
+                  <button
+                    onClick={saveCategories}
+                    className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                  >
+                    Save Categories
+                  </button>
+                )}
+              </div>
 
               {/* Tag management */}
               <div className="border-t border-gray-800 pt-5">
@@ -963,7 +992,7 @@ export default function App() {
                     onClick={saveTags}
                     className="mt-4 w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg transition-colors"
                   >
-                    Save Changes
+                    Save Tags
                   </button>
                 )}
               </div>

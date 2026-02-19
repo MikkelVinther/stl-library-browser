@@ -1,26 +1,19 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-
-const FILE_TYPES = [
-  { value: 'terrain', label: 'Terrain' },
-  { value: 'tile', label: 'Tiles' },
-  { value: 'prop', label: 'Props' },
-  { value: 'scatter', label: 'Scatter' },
-];
+import { CATEGORY_IDS, CATEGORY_LABELS } from '../utils/categoryClassifier';
 
 export default function BulkActionBar({
   count,
   totalFiltered,
   onAddTags,
-  onSetType,
-  onSetCollection,
+  onSetCategory,
   onSelectAll,
   onClear,
 }) {
   const [tagInput, setTagInput] = useState('');
-  const [collectionInput, setCollectionInput] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
-  const [showCollectionInput, setShowCollectionInput] = useState(false);
+  const [catInput, setCatInput] = useState('');
+  const [activeCatId, setActiveCatId] = useState(null);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();
@@ -31,12 +24,12 @@ export default function BulkActionBar({
     }
   };
 
-  const handleSetCollection = () => {
-    const trimmed = collectionInput.trim();
-    if (trimmed) {
-      onSetCollection(trimmed);
-      setCollectionInput('');
-      setShowCollectionInput(false);
+  const handleSetCategory = () => {
+    const trimmed = catInput.trim();
+    if (trimmed && activeCatId) {
+      onSetCategory(activeCatId, trimmed);
+      setCatInput('');
+      setActiveCatId(null);
     }
   };
 
@@ -76,47 +69,43 @@ export default function BulkActionBar({
         </button>
       )}
 
-      {/* Set Type */}
-      <select
-        defaultValue=""
-        onChange={(e) => {
-          if (e.target.value) onSetType(e.target.value);
-          e.target.value = '';
-        }}
-        className="bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-      >
-        <option value="" disabled>Set Type</option>
-        {FILE_TYPES.map((t) => (
-          <option key={t.value} value={t.value}>{t.label}</option>
-        ))}
-      </select>
-
-      {/* Set Collection */}
-      {showCollectionInput ? (
-        <div className="flex gap-1">
+      {/* Set Category */}
+      {activeCatId ? (
+        <div className="flex gap-1 items-center">
+          <span className="text-[10px] text-gray-500">{CATEGORY_LABELS[activeCatId]}:</span>
           <input
             type="text"
-            value={collectionInput}
-            onChange={(e) => setCollectionInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSetCollection()}
-            placeholder="Collection name..."
+            value={catInput}
+            onChange={(e) => setCatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSetCategory();
+              if (e.key === 'Escape') { setActiveCatId(null); setCatInput(''); }
+            }}
+            placeholder="Value..."
             autoFocus
-            className="w-36 bg-gray-900 border border-gray-600 rounded-lg text-xs text-gray-200 px-2 py-1.5 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-24 bg-gray-900 border border-gray-600 rounded-lg text-xs text-gray-200 px-2 py-1.5 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          <button onClick={handleSetCollection} className="px-2 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-500">
+          <button onClick={handleSetCategory} className="px-2 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-500">
             Set
           </button>
-          <button onClick={() => setShowCollectionInput(false)} className="p-1.5 text-gray-500 hover:text-gray-300">
+          <button onClick={() => { setActiveCatId(null); setCatInput(''); }} className="p-1.5 text-gray-500 hover:text-gray-300">
             <X className="w-3 h-3" />
           </button>
         </div>
       ) : (
-        <button
-          onClick={() => setShowCollectionInput(true)}
-          className="px-3 py-1.5 text-xs font-medium text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+        <select
+          defaultValue=""
+          onChange={(e) => {
+            if (e.target.value) setActiveCatId(e.target.value);
+            e.target.value = '';
+          }}
+          className="bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
         >
-          Collection
-        </button>
+          <option value="" disabled>Set Category</option>
+          {CATEGORY_IDS.map((catId) => (
+            <option key={catId} value={catId}>{CATEGORY_LABELS[catId]}</option>
+          ))}
+        </select>
       )}
 
       <div className="w-px h-6 bg-gray-700" />

@@ -1,12 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, Loader2 } from 'lucide-react';
-
-const FILE_TYPES = [
-  { value: 'terrain', label: 'Terrain' },
-  { value: 'tile', label: 'Tiles' },
-  { value: 'prop', label: 'Props' },
-  { value: 'scatter', label: 'Scatter' },
-];
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Check, Loader2, ChevronDown, ChevronRight, Pencil, Plus } from 'lucide-react';
+import { CATEGORY_IDS, CATEGORY_LABELS } from '../utils/categoryClassifier';
 
 export default function ImportReviewPanel({
   files,
@@ -16,114 +10,132 @@ export default function ImportReviewPanel({
   processedCount = 0,
   totalCount = 0,
 }) {
-  const [editedFiles, setEditedFiles] = useState(() =>
-    files.map((f) => ({
-      ...f,
-      pendingSuggestions: [...(f.metadata?.suggestedTags || [])],
-    }))
-  );
-  const [bulkCollection, setBulkCollection] = useState('');
-  const [bulkTag, setBulkTag] = useState('');
-  const [bulkType, setBulkType] = useState('');
+  const [editedFiles, setEditedFiles] = useState(() => [...files]);
+  const [expandedCategory, setExpandedCategory] = useState(null); // 'role' or null
+  const [expandedValue, setExpandedValue] = useState(null); // 'scatter' or null
+  const [renamingGroup, setRenamingGroup] = useState(null); // { catId, oldValue }
+  const [renameInput, setRenameInput] = useState('');
+  const [addingTo, setAddingTo] = useState(null); // catId currently adding a new value to
+  const [newValueInput, setNewValueInput] = useState('');
+  const [selectedFileIds, setSelectedFileIds] = useState(new Set());
   const prevLenRef = useRef(files.length);
-  const listEndRef = useRef(null);
 
   // Append new files as they arrive from the streaming pipeline
   useEffect(() => {
     if (files.length > prevLenRef.current) {
-      const newFiles = files.slice(prevLenRef.current).map((f) => ({
-        ...f,
-        pendingSuggestions: [...(f.metadata?.suggestedTags || [])],
-      }));
+      const newFiles = files.slice(prevLenRef.current);
       setEditedFiles((prev) => [...prev, ...newFiles]);
-      // Auto-scroll to bottom to show latest file
-      setTimeout(() => listEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     }
     prevLenRef.current = files.length;
   }, [files.length]);
 
-  const updateFile = (id, updates) => {
-    setEditedFiles((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, ...updates } : f))
-    );
-  };
-
-  const acceptSuggestion = (fileId, tag) => {
-    setEditedFiles((prev) =>
-      prev.map((f) => {
-        if (f.id !== fileId) return f;
-        if (f.tags.includes(tag)) {
-          return { ...f, pendingSuggestions: f.pendingSuggestions.filter((t) => t !== tag) };
+  // Build category summary
+  const categorySummary = useMemo(() => {
+    return CATEGORY_IDS.map((catId) => {
+      const groups = {};
+      const unclassified = [];
+      for (const file of editedFiles) {
+        const val = file.categories?.[catId];
+        if (val) {
+          (groups[val] ||= []).push(file);
+        } else {
+          unclassified.push(file);
         }
-        return {
-          ...f,
-          tags: [...f.tags, tag],
-          pendingSuggestions: f.pendingSuggestions.filter((t) => t !== tag),
-        };
-      })
-    );
-  };
+      }
+      const totalFiles = editedFiles.length;
+      const classifiedCount = totalFiles - unclassified.length;
+      const classifiedPct = totalFiles > 0 ? classifiedCount / totalFiles : 0;
+      return {
+        id: catId,
+        label: CATEGORY_LABELS[catId],
+        groups,
+        unclassified,
+        classifiedPct,
+      };
+    });
+  }, [editedFiles]);
 
-  const dismissSuggestion = (fileId, tag) => {
-    setEditedFiles((prev) =>
-      prev.map((f) =>
-        f.id === fileId
-          ? { ...f, pendingSuggestions: f.pendingSuggestions.filter((t) => t !== tag) }
-          : f
-      )
-    );
-  };
-
-  const acceptAllSuggestions = (fileId) => {
+  const updateFileCategories = (fileIds, catId, newValue) => {
     setEditedFiles((prev) =>
       prev.map((f) => {
-        if (f.id !== fileId) return f;
-        const newTags = [...new Set([...f.tags, ...f.pendingSuggestions])];
-        return { ...f, tags: newTags, pendingSuggestions: [] };
+        if (!fileIds.has(f.id)) return f;
+        const categories = { ...f.categories };
+        if (newValue) {
+          categories[catId] = newValue;
+        } else {
+          delete categories[catId];
+        }
+        return { ...f, categories };
       })
     );
   };
 
-  const addBulkTag = () => {
-    const trimmed = bulkTag.trim();
-    if (!trimmed) return;
-    setEditedFiles((prev) =>
-      prev.map((f) =>
-        f.tags.includes(trimmed) ? f : { ...f, tags: [...f.tags, trimmed] }
-      )
+  const handleRename = (catId, oldValue) => {
+    const trimmed = renameInput.trim();
+    if (!trimmed || trimmed === oldValue) {
+      setRenamingGroup(null);
+      return;
+    }
+    const affectedIds = new Set(
+      editedFiles.filter((f) => f.categories?.[catId] === oldValue).map((f) => f.id)
     );
-    setBulkTag('');
+    updateFileCategories(affectedIds, catId, trimmed);
+    setRenamingGroup(null);
+    // Update expanded value if it was renamed
+    if (expandedValue === oldValue) setExpandedValue(trimmed);
   };
 
-  const applyBulkCollection = () => {
-    if (!bulkCollection.trim()) return;
-    setEditedFiles((prev) =>
-      prev.map((f) => ({
-        ...f,
-        metadata: { ...f.metadata, collection: bulkCollection.trim() },
-      }))
-    );
+  const handleAddValue = (catId) => {
+    const trimmed = newValueInput.trim();
+    if (!trimmed || selectedFileIds.size === 0) {
+      setAddingTo(null);
+      setNewValueInput('');
+      return;
+    }
+    updateFileCategories(selectedFileIds, catId, trimmed);
+    setSelectedFileIds(new Set());
+    setAddingTo(null);
+    setNewValueInput('');
   };
 
-  const applyBulkType = () => {
-    if (!bulkType) return;
-    setEditedFiles((prev) => prev.map((f) => ({ ...f, type: bulkType })));
+  const handleReassign = (catId, newValue) => {
+    if (selectedFileIds.size === 0) return;
+    updateFileCategories(selectedFileIds, catId, newValue);
+    setSelectedFileIds(new Set());
+  };
+
+  const toggleFileSelect = (fileId) => {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(fileId)) next.delete(fileId);
+      else next.add(fileId);
+      return next;
+    });
   };
 
   const handleConfirm = () => {
-    const cleaned = editedFiles.map(({ pendingSuggestions, ...rest }) => ({
-      ...rest,
-      metadata: {
-        ...rest.metadata,
-        suggestedTags: pendingSuggestions,
-      },
-    }));
-    onConfirm(cleaned);
+    onConfirm(editedFiles);
   };
 
   const headerText = isProcessing
     ? `Importing... (${processedCount} of ${totalCount})`
     : `Import ${editedFiles.length} file${editedFiles.length !== 1 ? 's' : ''}`;
+
+  const expandedFiles = expandedCategory && expandedValue
+    ? categorySummary
+        .find((c) => c.id === expandedCategory)
+        ?.groups[expandedValue] || []
+    : expandedCategory && expandedValue === null
+    ? []
+    : [];
+
+  // Show unclassified files when clicking "unclassified" chip
+  const [showUnclassified, setShowUnclassified] = useState(null); // catId
+  const unclassifiedFiles = showUnclassified
+    ? categorySummary.find((c) => c.id === showUnclassified)?.unclassified || []
+    : [];
+
+  const visibleThumbnails = expandedValue ? expandedFiles : unclassifiedFiles;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -143,143 +155,256 @@ export default function ImportReviewPanel({
           </button>
         </div>
 
-        {/* File list */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {editedFiles.map((file) => (
-            <div key={file.id} className="flex gap-4 p-4 bg-gray-800/50 rounded-xl border border-gray-800">
-              {/* Thumbnail */}
-              <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-950 flex-shrink-0">
-                {file.thumbnail && (
-                  <img src={file.thumbnail} alt="" className="w-full h-full object-contain" />
-                )}
-              </div>
+        {/* Category summary */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1">
+          {categorySummary.map((cat) => {
+            const groupEntries = Object.entries(cat.groups).sort((a, b) => b[1].length - a[1].length);
+            const isExpanded = expandedCategory === cat.id;
+            // Auto-collapse categories with <10% classified
+            const autoCollapsed = cat.classifiedPct < 0.1 && !isExpanded;
 
-              {/* Details */}
-              <div className="flex-1 min-w-0 space-y-2">
-                <p className="text-sm font-medium text-gray-200 truncate">{file.name}</p>
-
-                {/* Suggested tags */}
-                {file.pendingSuggestions.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-1">Suggested:</span>
-                    {file.pendingSuggestions.map((tag) => (
-                      <span key={tag} className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-blue-300 border border-dashed border-blue-500/40 bg-blue-500/5">
-                        {tag}
-                        <button onClick={() => acceptSuggestion(file.id, tag)} className="text-emerald-400 hover:text-emerald-300">
-                          <Check className="w-3 h-3" />
-                        </button>
-                        <button onClick={() => dismissSuggestion(file.id, tag)} className="text-gray-500 hover:text-red-400">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                    <button
-                      onClick={() => acceptAllSuggestions(file.id)}
-                      className="text-[10px] text-blue-400 hover:text-blue-300 ml-1"
-                    >
-                      Accept all
-                    </button>
-                  </div>
-                )}
-
-                {/* Confirmed tags */}
-                {file.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {file.tags.map((tag) => (
-                      <span key={tag} className="px-2 py-0.5 bg-gray-700 rounded-full text-xs text-gray-300">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Type + Collection row */}
-                <div className="flex gap-3 items-center">
-                  <select
-                    value={file.type}
-                    onChange={(e) => updateFile(file.id, { type: e.target.value })}
-                    className="bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    {FILE_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Collection..."
-                    value={file.metadata?.collection || ''}
-                    onChange={(e) =>
-                      updateFile(file.id, {
-                        metadata: { ...file.metadata, collection: e.target.value },
-                      })
+            return (
+              <div key={cat.id} className="border border-gray-800 rounded-xl overflow-hidden">
+                {/* Category header row */}
+                <button
+                  onClick={() => {
+                    if (isExpanded) {
+                      setExpandedCategory(null);
+                      setExpandedValue(null);
+                      setShowUnclassified(null);
+                      setSelectedFileIds(new Set());
+                    } else {
+                      setExpandedCategory(cat.id);
+                      setExpandedValue(null);
+                      setShowUnclassified(null);
+                      setSelectedFileIds(new Set());
                     }
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 px-2 py-1.5 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors"
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                  )}
+                  <span className="text-sm font-semibold text-gray-300 w-24 text-left flex-shrink-0">
+                    {cat.label}
+                  </span>
+
+                  {/* Value chips */}
+                  <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+                    {autoCollapsed ? (
+                      <span className="text-xs text-gray-600">
+                        {groupEntries.length > 0
+                          ? `${groupEntries.length} value${groupEntries.length !== 1 ? 's' : ''}`
+                          : 'no values detected'}
+                      </span>
+                    ) : (
+                      <>
+                        {groupEntries.map(([value, files]) => (
+                          <span
+                            key={value}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${
+                              expandedValue === value && isExpanded
+                                ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40'
+                                : 'bg-gray-800 text-gray-300 hover:bg-gray-700 ring-1 ring-gray-700'
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedCategory(cat.id);
+                              setExpandedValue(expandedValue === value && isExpanded ? null : value);
+                              setShowUnclassified(null);
+                              setSelectedFileIds(new Set());
+                            }}
+                          >
+                            {value}
+                            <span className="text-[10px] text-gray-500 ml-0.5">
+                              {files.length}
+                            </span>
+                          </span>
+                        ))}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Unclassified count */}
+                  {cat.unclassified.length > 0 && (
+                    <span
+                      className={`text-xs flex-shrink-0 cursor-pointer transition-colors ${
+                        showUnclassified === cat.id
+                          ? 'text-amber-400'
+                          : 'text-gray-600 hover:text-gray-400'
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedCategory(cat.id);
+                        setExpandedValue(null);
+                        setShowUnclassified(showUnclassified === cat.id ? null : cat.id);
+                        setSelectedFileIds(new Set());
+                      }}
+                    >
+                      {cat.unclassified.length} unclassified
+                    </span>
+                  )}
+                </button>
+
+                {/* Expanded area — thumbnail strip + actions */}
+                {isExpanded && (expandedValue || showUnclassified === cat.id) && (
+                  <div className="border-t border-gray-800 px-4 py-3 space-y-3">
+                    {/* Actions bar */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Rename (only for classified groups) */}
+                      {expandedValue && (
+                        <>
+                          {renamingGroup?.catId === cat.id && renamingGroup?.oldValue === expandedValue ? (
+                            <div className="flex gap-1">
+                              <input
+                                type="text"
+                                value={renameInput}
+                                onChange={(e) => setRenameInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleRename(cat.id, expandedValue);
+                                  if (e.key === 'Escape') setRenamingGroup(null);
+                                }}
+                                autoFocus
+                                className="bg-gray-800 border border-gray-600 rounded-lg text-xs text-gray-200 px-2 py-1 w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                              <button
+                                onClick={() => handleRename(cat.id, expandedValue)}
+                                className="px-2 py-1 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-500"
+                              >
+                                Rename
+                              </button>
+                              <button
+                                onClick={() => setRenamingGroup(null)}
+                                className="p-1 text-gray-500 hover:text-gray-300"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setRenamingGroup({ catId: cat.id, oldValue: expandedValue });
+                                setRenameInput(expandedValue);
+                              }}
+                              className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-blue-400 transition-colors"
+                            >
+                              <Pencil className="w-3 h-3" />
+                              Rename group
+                            </button>
+                          )}
+                        </>
+                      )}
+
+                      {/* Reassign selected files */}
+                      {selectedFileIds.size > 0 && (
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          <span className="text-[10px] text-gray-500">
+                            {selectedFileIds.size} selected — move to:
+                          </span>
+                          {Object.keys(cat.groups)
+                            .filter((v) => v !== expandedValue)
+                            .map((v) => (
+                              <button
+                                key={v}
+                                onClick={() => handleReassign(cat.id, v)}
+                                className="px-2 py-0.5 text-[10px] bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-full transition-colors"
+                              >
+                                {v}
+                              </button>
+                            ))}
+                          {/* New value input */}
+                          {addingTo === cat.id ? (
+                            <div className="flex gap-1">
+                              <input
+                                type="text"
+                                value={newValueInput}
+                                onChange={(e) => setNewValueInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleAddValue(cat.id);
+                                  if (e.key === 'Escape') { setAddingTo(null); setNewValueInput(''); }
+                                }}
+                                placeholder="New value..."
+                                autoFocus
+                                className="bg-gray-800 border border-gray-600 rounded text-[10px] text-gray-200 px-1.5 py-0.5 w-20 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                              <button
+                                onClick={() => handleAddValue(cat.id)}
+                                className="px-1.5 py-0.5 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-500"
+                              >
+                                Move
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setAddingTo(cat.id)}
+                              className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-blue-400 hover:text-blue-300"
+                            >
+                              <Plus className="w-2.5 h-2.5" />
+                              New
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Thumbnail grid */}
+                    <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                      {visibleThumbnails.map((file) => (
+                        <button
+                          key={file.id}
+                          onClick={() => toggleFileSelect(file.id)}
+                          className={`relative w-16 h-16 rounded-lg overflow-hidden bg-gray-950 flex-shrink-0 border-2 transition-all ${
+                            selectedFileIds.has(file.id)
+                              ? 'border-blue-500 ring-1 ring-blue-500/30'
+                              : 'border-transparent hover:border-gray-600'
+                          }`}
+                          title={file.name}
+                        >
+                          {file.thumbnail ? (
+                            <img src={file.thumbnail} alt="" className="w-full h-full object-contain" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-700 text-[8px]">
+                              STL
+                            </div>
+                          )}
+                          {selectedFileIds.has(file.id) && (
+                            <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                              <Check className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
-          <div ref={listEndRef} />
+            );
+          })}
         </div>
 
-        {/* Bulk apply bar */}
-        <div className="border-t border-gray-800 px-6 py-4 space-y-3">
-          <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Apply to all</p>
-          <div className="flex flex-wrap gap-2 items-center">
-            <input
-              type="text"
-              placeholder="Collection for all..."
-              value={bulkCollection}
-              onChange={(e) => setBulkCollection(e.target.value)}
-              onBlur={applyBulkCollection}
-              onKeyDown={(e) => e.key === 'Enter' && applyBulkCollection()}
-              className="bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 px-3 py-1.5 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-            <div className="flex gap-1">
-              <input
-                type="text"
-                placeholder="Add tag to all..."
-                value={bulkTag}
-                onChange={(e) => setBulkTag(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addBulkTag()}
-                className="bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 px-3 py-1.5 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
+        {/* Bottom actions */}
+        <div className="border-t border-gray-800 px-6 py-4">
+          <div className="flex justify-between items-center">
+            <p className="text-xs text-gray-500">
+              {editedFiles.length} file{editedFiles.length !== 1 ? 's' : ''} ready to import
+            </p>
+            <div className="flex gap-3">
               <button
-                onClick={addBulkTag}
-                disabled={!bulkTag.trim()}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white text-xs font-medium rounded-lg transition-colors"
+                onClick={onCancel}
+                className="px-5 py-2.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
               >
-                Add
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirm}
+                disabled={isProcessing}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                {isProcessing ? 'Processing...' : 'Import All'}
               </button>
             </div>
-            <select
-              value={bulkType}
-              onChange={(e) => { setBulkType(e.target.value); }}
-              onBlur={applyBulkType}
-              className="bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">Type for all...</option>
-              {FILE_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              onClick={onCancel}
-              className="px-5 py-2.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={isProcessing}
-              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold rounded-lg transition-colors"
-            >
-              {isProcessing ? 'Processing...' : 'Import'}
-            </button>
           </div>
         </div>
       </div>
