@@ -19,5 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAllDirectories: () => ipcRenderer.invoke('db:getAllDirectories'),
     saveDirectory: (data) => ipcRenderer.invoke('db:saveDirectory', data),
     deleteDirectory: (id) => ipcRenderer.invoke('db:deleteDirectory', id),
+    getCategoryValues: (fileId) => ipcRenderer.invoke('db:getCategoryValues', fileId),
+    setCategoryValues: (fileId, values) => ipcRenderer.invoke('db:setCategoryValues', fileId, values),
+    bulkSetCategoryValue: (fileIds, categoryId, value) => ipcRenderer.invoke('db:bulkSetCategoryValue', fileIds, categoryId, value),
+    bulkSetCategoryValues: (entries) => ipcRenderer.invoke('db:bulkSetCategoryValues', entries),
   },
 });

@@ -46,6 +46,10 @@ ipcMain.handle('db:cancelPendingFiles', () => db.cancelPendingFiles());
 ipcMain.handle('db:getAllDirectories', () => db.getAllDirectories());
 ipcMain.handle('db:saveDirectory', (_, data) => db.saveDirectory(data));
 ipcMain.handle('db:deleteDirectory', (_, id) => db.deleteDirectory(id));
+ipcMain.handle('db:getCategoryValues', (_, fileId) => db.getCategoryValues(fileId));
+ipcMain.handle('db:setCategoryValues', (_, fileId, values) => db.setCategoryValues(fileId, values));
+ipcMain.handle('db:bulkSetCategoryValue', (_, fileIds, categoryId, value) => db.bulkSetCategoryValue(fileIds, categoryId, value));
+ipcMain.handle('db:bulkSetCategoryValues', (_, entries) => db.bulkSetCategoryValues(entries));
 
 // ── Filesystem IPC handlers ──
 ipcMain.handle('dialog:openFolder', async () => {

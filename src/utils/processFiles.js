@@ -5,6 +5,7 @@ import { parseSTLHeader } from './stlHeaderParser';
 import { tokenizeFilename } from './filenameTokenizer';
 import { estimateWeight, getPrintSettings } from './printEstimate';
 import { readFile } from './electronBridge';
+import { classifyFile } from './categoryClassifier';
 
 /**
  * Process an array of file info objects from the main-process directory scan.
@@ -56,8 +57,13 @@ export async function processFiles(fileInfos, { onFileProcessed, onProgress, onE
       const estimatedGrams = estimateWeight(geoStats.volume, settings);
       const volumeCm3 = geoStats.volume != null ? +(geoStats.volume / 1000).toFixed(2) : null;
 
-      const pathParts = fileInfo.relativePath.split('/');
-      const collection = pathParts.length > 1 ? pathParts[0] : null;
+      // Auto-classify into structured categories
+      const categories = classifyFile({
+        relativePath: fileInfo.relativePath,
+        filename: fileName,
+        tokens: suggestedTags,
+        geometry: geoStats,
+      });
 
       const entry = {
         id: crypto.randomUUID(),
@@ -67,8 +73,8 @@ export async function processFiles(fileInfos, { onFileProcessed, onProgress, onE
         directoryId,
         size: `${(fileInfo.sizeBytes / (1024 * 1024)).toFixed(1)} MB`,
         sizeBytes: fileInfo.sizeBytes,
-        type: 'prop',
         tags: [],
+        categories,
         thumbnail,
         metadata: {
           ...geoStats,
@@ -78,7 +84,6 @@ export async function processFiles(fileInfos, { onFileProcessed, onProgress, onE
           importedAt: Date.now(),
           lastModified: fileInfo.lastModified,
           fileSize: fileInfo.sizeBytes,
-          collection,
           printEstimate: { volumeCm3, estimatedGrams },
         },
       };

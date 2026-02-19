@@ -17,3 +17,7 @@ export const cancelPendingFiles = () => api.db.cancelPendingFiles();
 export const getAllDirectories = () => api.db.getAllDirectories();
 export const saveDirectory = (data) => api.db.saveDirectory(data);
 export const deleteDirectory = (id) => api.db.deleteDirectory(id);
+export const getCategoryValues = (fileId) => api.db.getCategoryValues(fileId);
+export const setCategoryValues = (fileId, values) => api.db.setCategoryValues(fileId, values);
+export const bulkSetCategoryValue = (fileIds, categoryId, value) => api.db.bulkSetCategoryValue(fileIds, categoryId, value);
+export const bulkSetCategoryValues = (entries) => api.db.bulkSetCategoryValues(entries);
