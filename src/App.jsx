@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, X, Tag, File, Box, Layers, Filter, Upload, Check, Settings, FolderOpen } from 'lucide-react';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { Search, X, Tag, File, Box, Layers, Filter, Upload, Check, Settings, FolderOpen, Loader2, Eye } from 'lucide-react';
 import STLViewer from './components/STLViewer';
 import { getAllFiles, updateFile, savePendingFile, confirmPendingFiles,
          cancelPendingFiles, openFolder, scanDirectory, readFile,
@@ -55,55 +54,16 @@ export default function App() {
   const dragCounter = useRef(0);
 
   const [isRestoring, setIsRestoring] = useState(true);
+  const [directories, setDirectories] = useState([]);
+  const [viewerState, setViewerState] = useState({ status: 'idle', geometry: null });
 
-  // Load saved files from IndexedDB on mount — chunked to avoid freezing
+  // Load saved files from SQLite on mount — no geometry parsing needed
   useEffect(() => {
-    const loader = new STLLoader();
     getAllFiles().then((saved) => {
-      if (saved.length === 0) {
-        setIsRestoring(false);
-        return;
-      }
-
-      const CHUNK_SIZE = 3;
-      let i = 0;
-
-      const processChunk = () => {
-        const chunk = saved.slice(i, i + CHUNK_SIZE);
-        const restored = chunk.map((entry) => {
-          let geometry = null;
-          if (entry.stlBuffer) {
-            try {
-              geometry = loader.parse(entry.stlBuffer);
-              geometry.computeVertexNormals();
-            } catch (e) {
-              console.error(`Failed to restore geometry for ${entry.name}:`, e);
-            }
-          }
-          return {
-            id: entry.id,
-            name: entry.name,
-            size: entry.size,
-            type: entry.type,
-            tags: entry.tags,
-            thumbnail: entry.thumbnail,
-            geometry,
-            metadata: entry.metadata || null,
-          };
-        });
-
-        setFiles((prev) => [...restored, ...prev]);
-        i += CHUNK_SIZE;
-
-        if (i < saved.length) {
-          setTimeout(processChunk, 0);
-        } else {
-          setIsRestoring(false);
-        }
-      };
-
-      processChunk();
+      setFiles(saved.map((f) => ({ ...f, geometry: null })));
+      setIsRestoring(false);
     });
+    getAllDirectories().then(setDirectories);
   }, []);
 
   const [selectedCollections, setSelectedCollections] = useState([]);
@@ -158,13 +118,32 @@ export default function App() {
     setSelectedFile(file);
     setFileTagsEdit([...file.tags]);
     setNewTag('');
+    setViewerState({ status: 'idle', geometry: null });
   };
 
   const closeFile = () => {
+    viewerState.geometry?.dispose();
+    setViewerState({ status: 'idle', geometry: null });
     setSelectedFile(null);
     setFileTagsEdit([]);
     setNewTag('');
     setShowPrintSettings(false);
+  };
+
+  const handleLoad3D = async () => {
+    if (!selectedFile?.fullPath) return;
+    setViewerState({ status: 'loading', geometry: null });
+    try {
+      const buffer = await readFile(selectedFile.fullPath);
+      if (!buffer) { setViewerState({ status: 'error', geometry: null }); return; }
+      const { STLLoader } = await import('three/examples/jsm/loaders/STLLoader.js');
+      const loader = new STLLoader();
+      const geometry = loader.parse(buffer.buffer || buffer);
+      geometry.computeVertexNormals();
+      setViewerState({ status: 'loaded', geometry });
+    } catch {
+      setViewerState({ status: 'error', geometry: null });
+    }
   };
 
   const addEditTag = () => {
@@ -185,10 +164,7 @@ export default function App() {
       )
     );
     setSelectedFile((prev) => ({ ...prev, tags: fileTagsEdit }));
-    // Persist tag changes for imported files (mock files aren't in IndexedDB)
-    if (selectedFile.geometry) {
-      updateFile(selectedFile.id, { tags: fileTagsEdit });
-    }
+    updateFile(selectedFile.id, { tags: fileTagsEdit });
   };
 
   const tagsChanged =
@@ -205,16 +181,30 @@ export default function App() {
     setSearchTerm('');
   };
 
-  /* ---- Streaming import pipeline ---- */
-  const startImport = async (source, total) => {
-    setImportState({ status: 'processing', files: [], processed: 0, total, currentName: null, errors: [] });
+  /* ---- Import pipeline ---- */
+  const handleOpenFolder = async () => {
+    const folderPath = await openFolder();
+    if (!folderPath) return;
+
+    const dirId = crypto.randomUUID();
+    const dirName = folderPath.split('/').pop() || folderPath.split('\\').pop();
+    await saveDirectory({ id: dirId, name: dirName, path: folderPath, addedAt: Date.now() });
+    setDirectories((prev) => [{ id: dirId, name: dirName, path: folderPath, addedAt: Date.now() }, ...prev]);
+
+    setImportState((prev) => ({ ...prev, status: 'scanning' }));
+    const fileInfos = await scanDirectory(folderPath);
+    if (fileInfos.length === 0) {
+      setImportState({ status: 'idle', files: [], processed: 0, total: 0, currentName: null, errors: [] });
+      return;
+    }
+
+    setImportState({ status: 'processing', files: [], processed: 0, total: fileInfos.length, currentName: null, errors: [] });
     cancelRef.current = false;
 
-    await processFiles(source, {
+    await processFiles(fileInfos, {
+      directoryId: dirId,
       onFileProcessed: (entry) => {
-        // Save to IndexedDB as pending (strip geometry — not serializable)
-        const { geometry, ...rest } = entry;
-        savePendingFile(rest);
+        savePendingFile(entry);
         setImportState((prev) => ({
           ...prev,
           files: [...prev.files, entry],
@@ -236,23 +226,6 @@ export default function App() {
     });
 
     setImportState((prev) => ({ ...prev, status: 'reviewing', currentName: null }));
-  };
-
-  const handleOpenFolder = async () => {
-    try {
-      const dirHandle = await window.showDirectoryPicker();
-      setImportState((prev) => ({ ...prev, status: 'scanning' }));
-      const total = await countSTLFiles(dirHandle);
-      if (total === 0) {
-        setImportState({ status: 'idle', files: [], processed: 0, total: 0, currentName: null, errors: [] });
-        return;
-      }
-      await startImport(scanDirectory(dirHandle), total);
-    } catch (err) {
-      // User cancelled the picker
-      if (err.name !== 'AbortError') console.error('Folder import error:', err);
-      setImportState({ status: 'idle', files: [], processed: 0, total: 0, currentName: null, errors: [] });
-    }
   };
 
   const confirmImport = async (reviewedFiles) => {
@@ -290,7 +263,7 @@ export default function App() {
       prev.map((f) => {
         if (!selectedIds.has(f.id)) return f;
         const newTags = [...new Set([...f.tags, ...tags])];
-        if (f.geometry) updateFile(f.id, { tags: newTags });
+        updateFile(f.id, { tags: newTags });
         return { ...f, tags: newTags };
       })
     );
@@ -300,7 +273,7 @@ export default function App() {
     setFiles((prev) =>
       prev.map((f) => {
         if (!selectedIds.has(f.id)) return f;
-        if (f.geometry) updateFile(f.id, { type });
+        updateFile(f.id, { type });
         return { ...f, type };
       })
     );
@@ -311,7 +284,7 @@ export default function App() {
       prev.map((f) => {
         if (!selectedIds.has(f.id)) return f;
         const metadata = { ...(f.metadata || {}), collection };
-        if (f.geometry) updateFile(f.id, { metadata });
+        updateFile(f.id, { metadata });
         return { ...f, metadata };
       })
     );
@@ -326,11 +299,50 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [bulkMode]);
 
+  const handleDroppedFiles = async (fileList) => {
+    const stlFiles = [...fileList].filter((f) => f.name.toLowerCase().endsWith('.stl'));
+    if (stlFiles.length === 0) return;
+
+    // Convert browser File objects to the shape processFiles expects
+    const fileInfos = stlFiles.map((f) => ({
+      relativePath: f.name,
+      fullPath: f.path || null, // Electron provides f.path for dropped files
+      sizeBytes: f.size,
+      lastModified: f.lastModified,
+      _browserFile: f, // Keep reference for reading if no path
+    }));
+
+    setImportState({ status: 'processing', files: [], processed: 0, total: fileInfos.length, currentName: null, errors: [] });
+    cancelRef.current = false;
+
+    await processFiles(fileInfos, {
+      onFileProcessed: (entry) => {
+        savePendingFile(entry);
+        setImportState((prev) => ({
+          ...prev,
+          files: [...prev.files, entry],
+          processed: prev.processed + 1,
+        }));
+      },
+      onProgress: ({ currentName }) => {
+        setImportState((prev) => ({ ...prev, currentName }));
+      },
+      onError: (name, err) => {
+        console.error(`Failed to process ${name}:`, err);
+        setImportState((prev) => ({
+          ...prev,
+          errors: [...prev.errors, { name, err }],
+          processed: prev.processed + 1,
+        }));
+      },
+      shouldCancel: () => cancelRef.current,
+    });
+
+    setImportState((prev) => ({ ...prev, status: 'reviewing', currentName: null }));
+  };
+
   const handleFileInput = (e) => {
-    const stlFiles = [...e.target.files].filter((f) =>
-      f.name.toLowerCase().endsWith('.stl')
-    );
-    if (stlFiles.length > 0) startImport(wrapFileList(stlFiles), stlFiles.length);
+    handleDroppedFiles(e.target.files);
     e.target.value = '';
   };
 
@@ -360,10 +372,7 @@ export default function App() {
     dragCounter.current = 0;
     setIsDragging(false);
 
-    const stlFiles = [...e.dataTransfer.files].filter((f) =>
-      f.name.toLowerCase().endsWith('.stl')
-    );
-    if (stlFiles.length > 0) startImport(wrapFileList(stlFiles), stlFiles.length);
+    handleDroppedFiles(e.dataTransfer.files);
   };
 
   /* ---- Shared filter panel content ---- */
@@ -657,7 +666,6 @@ export default function App() {
               {filteredFiles.map((file) => {
                 const TypeIcon = TYPE_ICON_MAP[file.type] || Box;
                 const style = TYPE_STYLES[file.type];
-                const has3D = !!file.geometry;
                 return (
                   <button
                     key={file.id}
@@ -789,33 +797,62 @@ export default function App() {
               <X className="w-4 h-4 text-gray-300" />
             </button>
 
-            {/* Large preview */}
+            {/* Large preview — lazy 3D loading */}
             <div
               className={`relative h-72 sm:h-80 ${
-                selectedFile.geometry
+                viewerState.status === 'loaded'
                   ? 'bg-gray-950'
                   : `bg-gradient-to-br ${TYPE_STYLES[selectedFile.type].gradient}`
               } flex items-center justify-center rounded-t-2xl overflow-hidden`}
             >
-              {selectedFile.geometry ? (
+              {viewerState.status === 'loaded' ? (
                 <STLViewer
-                  geometry={selectedFile.geometry}
+                  geometry={viewerState.geometry}
                   interactive
                   className="w-full h-full"
                 />
+              ) : viewerState.status === 'loading' ? (
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="w-10 h-10 text-white/40 animate-spin" />
+                  <p className="text-sm text-white/40">Loading 3D model...</p>
+                </div>
+              ) : viewerState.status === 'error' ? (
+                <div className="flex flex-col items-center gap-2">
+                  <X className="w-10 h-10 text-red-400/60" />
+                  <p className="text-sm text-red-400/60">Failed to load model</p>
+                </div>
               ) : (
                 <>
-                  <div
-                    className="absolute inset-0 opacity-[0.04]"
-                    style={{
-                      backgroundImage:
-                        'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
-                      backgroundSize: '24px 24px',
-                    }}
-                  />
-                  {React.createElement(
-                    TYPE_ICON_MAP[selectedFile.type] || Box,
-                    { className: 'w-24 h-24 text-white/10' }
+                  {selectedFile.thumbnail ? (
+                    <img
+                      src={selectedFile.thumbnail}
+                      alt={selectedFile.name}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <>
+                      <div
+                        className="absolute inset-0 opacity-[0.04]"
+                        style={{
+                          backgroundImage:
+                            'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
+                          backgroundSize: '24px 24px',
+                        }}
+                      />
+                      {React.createElement(
+                        TYPE_ICON_MAP[selectedFile.type] || Box,
+                        { className: 'w-24 h-24 text-white/10' }
+                      )}
+                    </>
+                  )}
+                  {selectedFile.fullPath && (
+                    <button
+                      onClick={handleLoad3D}
+                      className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg shadow-lg transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Load 3D Model
+                    </button>
                   )}
                 </>
               )}
@@ -837,7 +874,7 @@ export default function App() {
                 >
                   {selectedFile.type}
                 </span>
-                {selectedFile.geometry && (
+                {viewerState.status === 'loaded' && (
                   <span className="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-md bg-blue-600 text-white">
                     3D
                   </span>
@@ -866,9 +903,7 @@ export default function App() {
                             : f
                         )
                       );
-                      if (selectedFile.geometry) {
-                        updateFile(selectedFile.id, { metadata: selectedFile.metadata });
-                      }
+                      updateFile(selectedFile.id, { metadata: selectedFile.metadata });
                     }}
                     placeholder="Add to collection..."
                     className="text-sm bg-transparent border-b border-gray-800 focus:border-blue-500 text-gray-300 placeholder-gray-600 outline-none py-0.5 flex-1"
@@ -1005,9 +1040,7 @@ export default function App() {
                                     : f
                                 )
                               );
-                              if (selectedFile.geometry) {
-                                updateFile(selectedFile.id, { metadata: updatedMeta });
-                              }
+                              updateFile(selectedFile.id, { metadata: updatedMeta });
                             }}
                           />
                         )}

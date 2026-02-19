@@ -32,11 +32,16 @@ export async function processFiles(fileInfos, { onFileProcessed, onProgress, onE
     const fileName = fileInfo.relativePath.split('/').pop();
 
     try {
-      const buffer = await readFile(fileInfo.fullPath);
-      if (!buffer) throw new Error('File not found');
-
-      // buffer from IPC is a Uint8Array — get its underlying ArrayBuffer for STLLoader
-      const arrayBuffer = buffer.buffer || buffer;
+      let arrayBuffer;
+      if (fileInfo.fullPath) {
+        const buffer = await readFile(fileInfo.fullPath);
+        if (!buffer) throw new Error('File not found');
+        arrayBuffer = buffer.buffer || buffer;
+      } else if (fileInfo._browserFile) {
+        arrayBuffer = await fileInfo._browserFile.arrayBuffer();
+      } else {
+        throw new Error('No file path or browser file available');
+      }
       const geometry = loader.parse(arrayBuffer);
       geometry.computeVertexNormals();
 
