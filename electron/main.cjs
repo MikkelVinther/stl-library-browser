@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const db = require('./database.cjs');
+const { scanDirectory, readFile, countSTLFiles } = require('./filesystem.cjs');
 
 let mainWindow;
 
@@ -45,3 +46,16 @@ ipcMain.handle('db:cancelPendingFiles', () => db.cancelPendingFiles());
 ipcMain.handle('db:getAllDirectories', () => db.getAllDirectories());
 ipcMain.handle('db:saveDirectory', (_, data) => db.saveDirectory(data));
 ipcMain.handle('db:deleteDirectory', (_, id) => db.deleteDirectory(id));
+
+// ── Filesystem IPC handlers ──
+ipcMain.handle('dialog:openFolder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+  });
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
+ipcMain.handle('fs:scanDirectory', (_, folderPath) => scanDirectory(folderPath));
+ipcMain.handle('fs:readFile', (_, filePath) => readFile(filePath));
+ipcMain.handle('fs:countSTLFiles', (_, folderPath) => countSTLFiles(folderPath));
