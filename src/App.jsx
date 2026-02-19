@@ -11,39 +11,6 @@ import ImportProgress from './components/ImportProgress';
 import BulkActionBar from './components/BulkActionBar';
 import PrintSettingsPopover from './components/PrintSettingsPopover';
 
-const INITIAL_FILES = [
-  { id: 1, name: 'Dungeon Wall Section A', size: '2.4 MB', type: 'terrain', tags: ['OpenForge', '28mm', 'dungeon', 'stone', 'medieval'] },
-  { id: 2, name: 'Dungeon Floor Tile Set', size: '5.1 MB', type: 'tile', tags: ['OpenForge', '28mm', 'dungeon', 'stone', 'modular'] },
-  { id: 3, name: 'Gothic Archway', size: '3.8 MB', type: 'terrain', tags: ['Dragonlock', '28mm', 'dungeon', 'stone', 'medieval'] },
-  { id: 4, name: 'Spiral Staircase', size: '6.2 MB', type: 'terrain', tags: ['OpenForge', '28mm', 'dungeon', 'stone'] },
-  { id: 5, name: 'Dungeon Door Pack', size: '1.9 MB', type: 'prop', tags: ['OpenForge', '28mm', 'dungeon', 'medieval'] },
-  { id: 6, name: 'Stone Pillar Set', size: '2.7 MB', type: 'prop', tags: ['28mm', 'dungeon', 'stone', 'medieval'] },
-  { id: 7, name: 'Ancient Oak Tree', size: '8.4 MB', type: 'terrain', tags: ['28mm', 'forest', 'nature'] },
-  { id: 8, name: 'Forest Rock Formation', size: '4.5 MB', type: 'terrain', tags: ['28mm', 'forest', 'nature', 'stone'] },
-  { id: 9, name: 'Wooden Bridge', size: '3.3 MB', type: 'terrain', tags: ['28mm', 'forest', 'nature', 'wood'] },
-  { id: 10, name: 'Mushroom Cluster', size: '1.2 MB', type: 'scatter', tags: ['28mm', 'forest', 'nature'] },
-  { id: 11, name: 'Forest Floor Tiles', size: '7.6 MB', type: 'tile', tags: ['28mm', 'forest', 'nature', 'modular'] },
-  { id: 12, name: 'Sci-Fi Barrier Wall', size: '3.1 MB', type: 'terrain', tags: ['32mm', 'sci-fi'] },
-  { id: 13, name: 'Control Console', size: '2.0 MB', type: 'prop', tags: ['32mm', 'sci-fi'] },
-  { id: 14, name: 'Cargo Crate Stack', size: '1.5 MB', type: 'scatter', tags: ['32mm', 'sci-fi'] },
-  { id: 15, name: 'Landing Pad Tile', size: '9.8 MB', type: 'tile', tags: ['32mm', 'sci-fi', 'modular'] },
-  { id: 16, name: 'Power Generator', size: '4.2 MB', type: 'prop', tags: ['32mm', 'sci-fi'] },
-  { id: 17, name: 'Barrel Collection', size: '1.1 MB', type: 'scatter', tags: ['28mm', 'scatter', 'medieval', 'wood'] },
-  { id: 18, name: 'Treasure Chest Set', size: '0.9 MB', type: 'scatter', tags: ['28mm', 'scatter', 'medieval'] },
-  { id: 19, name: 'Tavern Table & Chairs', size: '2.3 MB', type: 'prop', tags: ['28mm', 'scatter', 'medieval', 'wood'] },
-  { id: 20, name: 'Bookshelf Collection', size: '3.6 MB', type: 'prop', tags: ['28mm', 'scatter', 'medieval', 'wood'] },
-  { id: 21, name: 'Campfire Set', size: '0.8 MB', type: 'scatter', tags: ['28mm', 'scatter', 'nature'] },
-  { id: 22, name: 'Cavern Tile Set', size: '11.2 MB', type: 'tile', tags: ['OpenForge', '28mm', 'dungeon', 'modular', 'stone'] },
-  { id: 23, name: 'Sewer Tile Pack', size: '8.9 MB', type: 'tile', tags: ['OpenForge', '28mm', 'dungeon', 'modular'] },
-  { id: 24, name: 'Hex Grass Tiles', size: '6.4 MB', type: 'tile', tags: ['28mm', 'nature', 'modular'] },
-  { id: 25, name: 'Cobblestone Road Set', size: '5.7 MB', type: 'tile', tags: ['28mm', 'medieval', 'modular', 'stone'] },
-  { id: 26, name: 'Desert Sand Tiles', size: '7.1 MB', type: 'tile', tags: ['28mm', 'nature', 'modular'] },
-  { id: 27, name: 'Ruined Tower', size: '15.8 MB', type: 'terrain', tags: ['Dragonlock', '28mm', 'dungeon', 'medieval', 'stone'] },
-  { id: 28, name: 'Market Stall', size: '3.4 MB', type: 'prop', tags: ['28mm', 'scatter', 'medieval', 'wood'] },
-  { id: 29, name: 'Alien Vegetation Set', size: '4.8 MB', type: 'scatter', tags: ['32mm', 'sci-fi', 'nature'] },
-  { id: 30, name: 'Modular Bridge System', size: '10.3 MB', type: 'terrain', tags: ['OpenForge', '28mm', 'modular', 'stone'] },
-];
-
 const FILE_TYPES = [
   { value: 'terrain', label: 'Terrain', icon: Box },
   { value: 'tile', label: 'Tiles', icon: Layers },
@@ -61,7 +28,7 @@ const TYPE_STYLES = {
 const TYPE_ICON_MAP = { terrain: Box, tile: Layers, prop: File, scatter: Tag };
 
 export default function App() {
-  const [files, setFiles] = useState(INITIAL_FILES);
+  const [files, setFiles] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState([]);
