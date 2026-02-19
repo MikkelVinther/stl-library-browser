@@ -2,10 +2,11 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Search, X, Tag, File, Box, Layers, Filter, Upload, Check, Settings, FolderOpen } from 'lucide-react';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import STLViewer from './components/STLViewer';
-import { saveFile, getAllFiles, updateFile, savePendingFile, confirmPendingFiles, cancelPendingFiles } from './utils/db';
+import { getAllFiles, updateFile, savePendingFile, confirmPendingFiles,
+         cancelPendingFiles, openFolder, scanDirectory, readFile,
+         getAllDirectories, saveDirectory } from './utils/electronBridge';
 import { estimateWeight } from './utils/printEstimate';
 import { processFiles } from './utils/processFiles';
-import { scanDirectory, countSTLFiles, wrapFileList } from './utils/directoryScanner';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import ImportProgress from './components/ImportProgress';
 import BulkActionBar from './components/BulkActionBar';
