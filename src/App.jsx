@@ -653,7 +653,7 @@ export default function App() {
               Restoring library...
             </div>
           )}
-          <div className="mb-5 flex items-baseline justify-between">
+          <div className="mb-5 flex items-center justify-between">
             <p className="text-sm text-gray-500">
               <span className="text-gray-300 font-semibold">
                 {filteredFiles.length}
@@ -661,14 +661,24 @@ export default function App() {
               file{filteredFiles.length !== 1 && 's'}
               {activeFilterCount > 0 && ' matching'}
             </p>
-            {activeFilterCount > 0 && (
-              <button
-                onClick={clearFilters}
-                className="hidden lg:block text-xs text-gray-500 hover:text-blue-400 transition-colors"
-              >
-                Clear filters
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {filteredFiles.length > 0 && (
+                <button
+                  onClick={selectAllFiltered}
+                  className="text-xs text-gray-500 hover:text-blue-400 transition-colors"
+                >
+                  Select all
+                </button>
+              )}
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={clearFilters}
+                  className="hidden lg:block text-xs text-gray-500 hover:text-blue-400 transition-colors"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
           </div>
 
           {filteredFiles.length > 0 ? (
