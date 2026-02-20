@@ -67,9 +67,9 @@ export const getAllDirectories = (): Promise<DirectoryEntry[]> => {
   try { return getAPI().db.getAllDirectories(); }
   catch (e) { console.error('[electronBridge] getAllDirectories failed:', e); return Promise.resolve([]); }
 };
-export const saveDirectory = (data: DirectoryEntry): Promise<void> => {
+export const saveDirectory = (data: DirectoryEntry): Promise<DirectoryEntry> => {
   try { return getAPI().db.saveDirectory(data); }
-  catch (e) { console.error('[electronBridge] saveDirectory failed:', e); return Promise.resolve(); }
+  catch (e) { console.error('[electronBridge] saveDirectory failed:', e); return Promise.resolve(data); }
 };
 export const deleteDirectory = (id: string): Promise<void> => {
   try { return getAPI().db.deleteDirectory(id); }

@@ -94,7 +94,7 @@ function inferScale(dimensions?: { x: number; y: number; z: number }): string | 
   // Only attempt scale inference for miniature-sized objects
   if (height > 100) return null;
 
-  if (height >= 20 && height <= 30) return '25mm';
+  if (height >= 20 && height <= 27) return '25mm';
   if (height >= 28 && height <= 38) return '32mm';
   if (height >= 45 && height <= 60) return '50mm';
   if (height >= 65 && height <= 85) return '75mm';

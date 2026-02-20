@@ -31,6 +31,7 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
   const [importState, setImportState] = useState<ImportState>(INITIAL_STATE);
   const cancelRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingWrites = useRef<Promise<void>[]>([]);
 
   // Batch buffer: avoids O(n²) spread on every file. Flushed every 50ms.
   const filesBuf = useRef<STLFile[]>([]);
@@ -47,12 +48,17 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
     flushBuf();
   }
 
+  async function awaitPendingWrites() {
+    await Promise.all(pendingWrites.current);
+    pendingWrites.current = [];
+  }
+
   /** Shared callbacks passed to processFiles — same logic for folder and drop imports. */
   function makeCallbacks(directoryId?: string) {
     return {
       directoryId,
       onFileProcessed: (entry: STLFile) => {
-        savePendingFile(entry);
+        pendingWrites.current.push(savePendingFile(entry));
         // Accumulate files in a ref; flush to state every 50ms to avoid O(n²)
         filesBuf.current.push(entry);
         if (flushTimer.current) clearTimeout(flushTimer.current);
@@ -79,10 +85,15 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
     const folderPath = await openFolder();
     if (!folderPath) return;
 
-    const dirId = crypto.randomUUID();
     const dirName = folderPath.split('/').pop() || folderPath.split('\\').pop() || folderPath;
-    await saveDirectory({ id: dirId, name: dirName, path: folderPath, addedAt: Date.now() });
-    setDirectories((prev) => [{ id: dirId, name: dirName, path: folderPath, addedAt: Date.now() }, ...prev]);
+    // saveDirectory returns the canonical row: existing id on re-import, new id on first import.
+    // This preserves FK-linked files when the same folder is opened again.
+    const canonicalDir = await saveDirectory({ id: crypto.randomUUID(), name: dirName, path: folderPath, addedAt: Date.now() });
+    setDirectories((prev) => {
+      // Replace existing entry for this path (if any) or prepend
+      const filtered = prev.filter((d) => d.path !== canonicalDir.path);
+      return [canonicalDir, ...filtered];
+    });
 
     setImportState((prev) => ({ ...prev, status: 'scanning' }));
     const fileInfos = await scanDirectory(folderPath);
@@ -92,12 +103,14 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
     }
 
     filesBuf.current = [];
+    pendingWrites.current = [];
     setImportState({ status: 'processing', files: [], processed: 0, total: fileInfos.length, currentName: null, errors: [] });
     cancelRef.current = false;
 
-    await processFiles(fileInfos, makeCallbacks(dirId));
+    await processFiles(fileInfos, makeCallbacks(canonicalDir.id));
     flushAll();
     disposeRenderer();
+    await awaitPendingWrites();
 
     setImportState((prev) => ({ ...prev, status: 'reviewing', currentName: null }));
   };
@@ -115,12 +128,14 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
     }));
 
     filesBuf.current = [];
+    pendingWrites.current = [];
     setImportState({ status: 'processing', files: [], processed: 0, total: fileInfos.length, currentName: null, errors: [] });
     cancelRef.current = false;
 
     await processFiles(fileInfos, makeCallbacks());
     flushAll();
     disposeRenderer();
+    await awaitPendingWrites();
 
     setImportState((prev) => ({ ...prev, status: 'reviewing', currentName: null }));
   };
@@ -131,6 +146,7 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
   };
 
   const confirmImport = async (reviewedFiles: STLFile[]) => {
+    await awaitPendingWrites();
     const ids = reviewedFiles.map((f) => f.id);
     await confirmPendingFiles(ids);
     const entries = reviewedFiles
@@ -143,6 +159,7 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
 
   const cancelImport = async () => {
     cancelRef.current = true;
+    await awaitPendingWrites();
     await cancelPendingFiles();
     setImportState(INITIAL_STATE);
   };

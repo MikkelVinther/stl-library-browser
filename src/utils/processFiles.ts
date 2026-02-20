@@ -1,4 +1,4 @@
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { loadSTLLoader } from './loadSTLLoader';
 import { renderThumbnail } from './renderThumbnail';
 import { analyzeGeometry } from './geometryAnalysis';
 import { parseSTLHeader } from './stlHeaderParser';
@@ -24,6 +24,7 @@ interface ProcessCallbacks {
 export async function processFiles(fileInfos: FileInfo[], {
   onFileProcessed, onProgress, onError, shouldCancel, directoryId,
 }: ProcessCallbacks): Promise<void> {
+  const { STLLoader } = await loadSTLLoader();
   const loader = new STLLoader();
   let processed = 0;
 

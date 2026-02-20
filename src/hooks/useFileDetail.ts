@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import type { STLFile, ViewerState, CategoryValues, PrintSettings } from '../types/index';
 import { updateFile, readFile } from '../utils/electronBridge';
 import { estimateWeight } from '../utils/printEstimate';
+import { loadSTLLoader } from '../utils/loadSTLLoader';
 
 interface UseFileDetailParams {
   updateFileInList: (id: string, updates: Partial<STLFile>) => void;
@@ -39,7 +40,7 @@ export function useFileDetail({ updateFileInList }: UseFileDetailParams) {
     try {
       const buffer = await readFile(selectedFile.fullPath);
       if (!buffer) { setViewerState({ status: 'error', geometry: null }); return; }
-      const { STLLoader } = await import('three/examples/jsm/loaders/STLLoader.js');
+      const { STLLoader } = await loadSTLLoader();
       const loader = new STLLoader();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const geometry = loader.parse((buffer as any).buffer ?? buffer);

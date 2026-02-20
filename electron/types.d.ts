@@ -14,7 +14,7 @@ interface ElectronDB {
   confirmPendingFiles: (ids: string[]) => Promise<void>;
   cancelPendingFiles: () => Promise<void>;
   getAllDirectories: () => Promise<DirectoryEntry[]>;
-  saveDirectory: (data: DirectoryEntry) => Promise<void>;
+  saveDirectory: (data: DirectoryEntry) => Promise<DirectoryEntry>;
   deleteDirectory: (id: string) => Promise<void>;
   getCategoryValues: (fileId: string) => Promise<CategoryValues>;
   setCategoryValues: (fileId: string, values: CategoryValues) => Promise<void>;

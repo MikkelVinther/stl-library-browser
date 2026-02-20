@@ -17,6 +17,6 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src"],
+  "include": ["src", "electron/types.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

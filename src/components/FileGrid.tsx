@@ -50,12 +50,12 @@ export function FileGrid({ files, selectedIds, bulkMode, onOpenFile, onToggleSel
 
   if (files.length === 0) {
     return (
-      <div className="text-center py-24">
-        <Box className="w-12 h-12 text-gray-800 mx-auto mb-4" />
-        <p className="text-gray-500 text-sm">No files match your filters</p>
+      <div className="text-center py-24 surface-panel rounded-2xl">
+        <Box className="w-12 h-12 text-faint mx-auto mb-4" />
+        <p className="text-soft text-sm">No files match your filters</p>
         <button
           onClick={onClearFilters}
-          className="mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          className="mt-3 ui-btn ui-btn-ghost text-xs"
         >
           Clear all filters
         </button>

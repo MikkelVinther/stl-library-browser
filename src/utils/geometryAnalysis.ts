@@ -17,7 +17,7 @@ export function analyzeGeometry(geometry: BufferGeometry): GeometryStats {
   // Bounding box dimensions
   geometry.computeBoundingBox();
   const dims = new THREE.Vector3();
-  geometry.boundingBox.getSize(dims);
+  if (geometry.boundingBox) geometry.boundingBox.getSize(dims);
 
   // Compute volume, surface area, and watertight check
   const a = new THREE.Vector3();

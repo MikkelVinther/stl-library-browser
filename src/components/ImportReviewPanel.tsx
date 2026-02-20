@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useDialog } from '../hooks/useDialog';
 import { X, Check, Loader2, ChevronDown, ChevronRight, Pencil, Plus } from 'lucide-react';
 import { CATEGORY_IDS, CATEGORY_LABELS } from '../utils/categoryClassifier';
 import type { STLFile } from '../types/index';
+
+type CategoryGroups = Record<string, STLFile[]>;
 
 interface ImportReviewPanelProps {
   files: STLFile[];
@@ -42,8 +45,8 @@ export default function ImportReviewPanel({
   // Build category summary
   const categorySummary = useMemo(() => {
     return CATEGORY_IDS.map((catId) => {
-      const groups = {};
-      const unclassified = [];
+      const groups: CategoryGroups = {};
+      const unclassified: STLFile[] = [];
       for (const file of editedFiles) {
         const val = file.categories?.[catId];
         if (val) {
@@ -80,7 +83,7 @@ export default function ImportReviewPanel({
     );
   };
 
-  const handleRename = (catId, oldValue) => {
+  const handleRename = (catId: string, oldValue: string) => {
     const trimmed = renameInput.trim();
     if (!trimmed || trimmed === oldValue) {
       setRenamingGroup(null);
@@ -95,7 +98,7 @@ export default function ImportReviewPanel({
     if (expandedValue === oldValue) setExpandedValue(trimmed);
   };
 
-  const handleAddValue = (catId) => {
+  const handleAddValue = (catId: string) => {
     const trimmed = newValueInput.trim();
     if (!trimmed || selectedFileIds.size === 0) {
       setAddingTo(null);
@@ -108,13 +111,13 @@ export default function ImportReviewPanel({
     setNewValueInput('');
   };
 
-  const handleReassign = (catId, newValue) => {
+  const handleReassign = (catId: string, newValue: string) => {
     if (selectedFileIds.size === 0) return;
     updateFileCategories(selectedFileIds, catId, newValue);
     setSelectedFileIds(new Set());
   };
 
-  const toggleFileSelect = (fileId) => {
+  const toggleFileSelect = (fileId: string) => {
     setSelectedFileIds((prev) => {
       const next = new Set(prev);
       if (next.has(fileId)) next.delete(fileId);
@@ -126,6 +129,8 @@ export default function ImportReviewPanel({
   const handleConfirm = () => {
     onConfirm(editedFiles);
   };
+
+  const { dialogRef } = useDialog(true, onCancel);
 
   const headerText = isProcessing
     ? `Importing... (${processedCount} of ${totalCount})`
@@ -150,18 +155,24 @@ export default function ImportReviewPanel({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
+      <div className="absolute inset-0 overlay-backdrop" onClick={onCancel} />
 
       {/* Panel */}
-      <div className="relative bg-gray-900 border-t border-gray-700 rounded-t-2xl max-h-[85vh] flex flex-col shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Import review"
+        className="relative overlay-panel border-t-0 rounded-t-2xl max-h-[85vh] flex flex-col"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(146,173,220,0.2)]">
           <div className="flex items-center gap-3">
             {isProcessing && <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />}
-            <h2 className="text-lg font-bold">{headerText}</h2>
+            <h2 className="text-lg font-bold brand-title">{headerText}</h2>
           </div>
-          <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-            <X className="w-5 h-5 text-gray-400" />
+          <button onClick={onCancel} className="p-1.5 ui-btn ui-btn-ghost">
+            <X className="w-5 h-5 text-soft" />
           </button>
         </div>
 
@@ -174,7 +185,7 @@ export default function ImportReviewPanel({
             const autoCollapsed = cat.classifiedPct < 0.1 && !isExpanded;
 
             return (
-              <div key={cat.id} className="border border-gray-800 rounded-xl overflow-hidden">
+              <div key={cat.id} className="border border-[rgba(146,173,220,0.22)] rounded-xl overflow-hidden bg-[rgba(8,15,28,0.45)]">
                 {/* Category header row */}
                 <button
                   onClick={() => {
@@ -190,21 +201,21 @@ export default function ImportReviewPanel({
                       setSelectedFileIds(new Set());
                     }
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[rgba(24,39,66,0.55)] transition-colors"
                 >
                   {isExpanded ? (
                     <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0" />
                   ) : (
                     <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />
                   )}
-                  <span className="text-sm font-semibold text-gray-300 w-24 text-left flex-shrink-0">
+                  <span className="text-sm font-semibold text-slate-100 w-24 text-left flex-shrink-0">
                     {cat.label}
                   </span>
 
                   {/* Value chips */}
                   <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
                     {autoCollapsed ? (
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-faint">
                         {groupEntries.length > 0
                           ? `${groupEntries.length} value${groupEntries.length !== 1 ? 's' : ''}`
                           : 'no values detected'}
@@ -217,7 +228,7 @@ export default function ImportReviewPanel({
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${
                               expandedValue === value && isExpanded
                                 ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40'
-                                : 'bg-gray-800 text-gray-300 hover:bg-gray-700 ring-1 ring-gray-700'
+                                : 'ui-chip hover:text-slate-100'
                             }`}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -228,7 +239,7 @@ export default function ImportReviewPanel({
                             }}
                           >
                             {value}
-                            <span className="text-[10px] text-gray-500 ml-0.5">
+                            <span className="text-[10px] text-faint ml-0.5">
                               {files.length}
                             </span>
                           </span>
@@ -242,8 +253,8 @@ export default function ImportReviewPanel({
                     <span
                       className={`text-xs flex-shrink-0 cursor-pointer transition-colors ${
                         showUnclassified === cat.id
-                          ? 'text-amber-400'
-                          : 'text-gray-600 hover:text-gray-400'
+                          ? 'text-amber-300'
+                          : 'text-faint hover:text-soft'
                       }`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -260,7 +271,7 @@ export default function ImportReviewPanel({
 
                 {/* Expanded area — thumbnail strip + actions */}
                 {isExpanded && (expandedValue || showUnclassified === cat.id) && (
-                  <div className="border-t border-gray-800 px-4 py-3 space-y-3">
+                  <div className="border-t border-[rgba(146,173,220,0.2)] px-4 py-3 space-y-3">
                     {/* Actions bar */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Rename (only for classified groups) */}
@@ -277,17 +288,17 @@ export default function ImportReviewPanel({
                                   if (e.key === 'Escape') setRenamingGroup(null);
                                 }}
                                 autoFocus
-                                className="bg-gray-800 border border-gray-600 rounded-lg text-xs text-gray-200 px-2 py-1 w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className="ui-input rounded-lg text-xs px-2 py-1 w-32"
                               />
                               <button
                                 onClick={() => handleRename(cat.id, expandedValue)}
-                                className="px-2 py-1 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-500"
+                                className="ui-btn ui-btn-primary px-2 py-1 text-xs"
                               >
                                 Rename
                               </button>
                               <button
                                 onClick={() => setRenamingGroup(null)}
-                                className="p-1 text-gray-500 hover:text-gray-300"
+                                className="ui-btn ui-btn-ghost p-1"
                               >
                                 <X className="w-3 h-3" />
                               </button>
@@ -298,7 +309,7 @@ export default function ImportReviewPanel({
                                 setRenamingGroup({ catId: cat.id, oldValue: expandedValue });
                                 setRenameInput(expandedValue);
                               }}
-                              className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-blue-400 transition-colors"
+                              className="flex items-center gap-1 px-2 py-1 text-xs text-soft hover:text-cyan-200 transition-colors"
                             >
                               <Pencil className="w-3 h-3" />
                               Rename group
@@ -310,7 +321,7 @@ export default function ImportReviewPanel({
                       {/* Reassign selected files */}
                       {selectedFileIds.size > 0 && (
                         <div className="flex items-center gap-1.5 ml-auto">
-                          <span className="text-[10px] text-gray-500">
+                          <span className="text-[10px] text-faint">
                             {selectedFileIds.size} selected — move to:
                           </span>
                           {Object.keys(cat.groups)
@@ -319,7 +330,7 @@ export default function ImportReviewPanel({
                               <button
                                 key={v}
                                 onClick={() => handleReassign(cat.id, v)}
-                                className="px-2 py-0.5 text-[10px] bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-full transition-colors"
+                                className="px-2 py-0.5 text-[10px] ui-chip hover:text-slate-100 rounded-full transition-colors"
                               >
                                 {v}
                               </button>
@@ -337,11 +348,11 @@ export default function ImportReviewPanel({
                                 }}
                                 placeholder="New value..."
                                 autoFocus
-                                className="bg-gray-800 border border-gray-600 rounded text-[10px] text-gray-200 px-1.5 py-0.5 w-20 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="ui-input rounded text-[10px] px-1.5 py-0.5 w-20"
                               />
                               <button
                                 onClick={() => handleAddValue(cat.id)}
-                                className="px-1.5 py-0.5 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-500"
+                                className="ui-btn ui-btn-primary px-1.5 py-0.5 text-[10px] rounded"
                               >
                                 Move
                               </button>
@@ -349,7 +360,7 @@ export default function ImportReviewPanel({
                           ) : (
                             <button
                               onClick={() => setAddingTo(cat.id)}
-                              className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-blue-400 hover:text-blue-300"
+                              className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-cyan-200 hover:text-cyan-100"
                             >
                               <Plus className="w-2.5 h-2.5" />
                               New
@@ -365,17 +376,17 @@ export default function ImportReviewPanel({
                         <button
                           key={file.id}
                           onClick={() => toggleFileSelect(file.id)}
-                          className={`relative w-16 h-16 rounded-lg overflow-hidden bg-gray-950 flex-shrink-0 border-2 transition-all ${
+                          className={`relative w-16 h-16 rounded-lg overflow-hidden bg-slate-950 flex-shrink-0 border-2 transition-all ${
                             selectedFileIds.has(file.id)
                               ? 'border-blue-500 ring-1 ring-blue-500/30'
-                              : 'border-transparent hover:border-gray-600'
+                              : 'border-transparent hover:border-[rgba(109,140,194,0.5)]'
                           }`}
                           title={file.name}
                         >
                           {file.thumbnail ? (
                             <img src={file.thumbnail} alt="" className="w-full h-full object-contain" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-gray-700 text-[8px]">
+                            <div className="w-full h-full flex items-center justify-center text-faint text-[8px]">
                               STL
                             </div>
                           )}
@@ -395,22 +406,22 @@ export default function ImportReviewPanel({
         </div>
 
         {/* Bottom actions */}
-        <div className="border-t border-gray-800 px-6 py-4">
+        <div className="border-t border-[rgba(146,173,220,0.2)] px-6 py-4">
           <div className="flex justify-between items-center">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-soft">
               {editedFiles.length} file{editedFiles.length !== 1 ? 's' : ''} ready to import
             </p>
             <div className="flex gap-3">
               <button
                 onClick={onCancel}
-                className="px-5 py-2.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+                className="ui-btn ui-btn-ghost px-5 py-2.5 text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirm}
                 disabled={isProcessing}
-                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                className="ui-btn ui-btn-primary px-6 py-2.5 disabled:bg-[rgba(25,40,66,0.8)] disabled:text-faint text-sm font-semibold rounded-lg transition-colors"
               >
                 {isProcessing ? 'Processing...' : 'Import All'}
               </button>

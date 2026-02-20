@@ -30,14 +30,14 @@ export const FilterSidebar = memo(function FilterSidebar({
     <div className="space-y-6">
       <button
         onClick={onImportFiles}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
+        className="ui-btn ui-btn-primary w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm"
       >
         <Upload className="w-4 h-4" />
         Import STL Files
       </button>
       <button
         onClick={onOpenFolder}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-semibold rounded-lg transition-colors"
+        className="ui-btn ui-btn-secondary w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm"
       >
         <FolderOpen className="w-4 h-4" />
         Open Folder
@@ -45,18 +45,18 @@ export const FilterSidebar = memo(function FilterSidebar({
 
       {!isMobile && (
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-faint" />
           <input
             type="text"
             placeholder="Search STL files..."
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-10 pr-9 py-2.5 bg-gray-900/60 border border-gray-700 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-transparent transition-shadow"
+            className="ui-input w-full pl-10 pr-9 py-2.5 text-sm"
           />
           {searchTerm && (
             <button
               onClick={() => onSearchChange('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-cyan-200 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -71,7 +71,7 @@ export const FilterSidebar = memo(function FilterSidebar({
         const selected = selectedCategories[catId] || [];
         return (
           <div key={catId}>
-            <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">
+            <h3 className="ui-section-label mb-3">
               {CATEGORY_LABELS[catId]}
             </h3>
             <div className="space-y-1">
@@ -83,12 +83,12 @@ export const FilterSidebar = memo(function FilterSidebar({
                     onClick={() => onToggleCategoryValue(catId, value)}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       active
-                        ? 'bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30'
-                        : 'text-gray-400 hover:bg-gray-700/40 hover:text-gray-200'
+                        ? 'ui-chip-active'
+                        : 'ui-chip hover:text-slate-100'
                     }`}
                   >
                     <span className="truncate">{value}</span>
-                    <span className="text-xs text-gray-600 ml-2 flex-shrink-0">{count}</span>
+                    <span className="text-xs text-faint ml-2 flex-shrink-0">{count}</span>
                   </button>
                 );
               })}
@@ -99,7 +99,7 @@ export const FilterSidebar = memo(function FilterSidebar({
 
       {allTags.length > 0 && (
         <div>
-          <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Tags</h3>
+          <h3 className="ui-section-label mb-3">Tags</h3>
           <div className="flex flex-wrap gap-1.5">
             {allTags.map((tag) => {
               const active = selectedTags.includes(tag);
@@ -109,8 +109,8 @@ export const FilterSidebar = memo(function FilterSidebar({
                   onClick={() => onToggleTag(tag)}
                   className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
                     active
-                      ? 'bg-blue-500 text-white shadow-md shadow-blue-500/25'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200 ring-1 ring-gray-700'
+                      ? 'ui-chip-active shadow-[0_0_0_1px_rgba(58,203,255,0.28)]'
+                      : 'ui-chip hover:text-slate-100'
                   }`}
                 >
                   {tag}
@@ -124,7 +124,7 @@ export const FilterSidebar = memo(function FilterSidebar({
       {activeFilterCount > 0 && (
         <button
           onClick={onClearFilters}
-          className="w-full py-2 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          className="ui-btn ui-btn-ghost w-full py-2 text-xs"
         >
           Clear all filters
         </button>

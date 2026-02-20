@@ -1,4 +1,5 @@
 import { Box, X, Tag, Loader2, Eye, Settings } from 'lucide-react';
+import { useDialog } from '../hooks/useDialog';
 import STLViewer from './STLViewer';
 import PrintSettingsPopover from './PrintSettingsPopover';
 import { CATEGORY_IDS, CATEGORY_LABELS } from '../utils/categoryClassifier';
@@ -36,17 +37,24 @@ export function FileDetailModal({
   const role = file.categories?.role;
   const style = getRoleStyle(role);
   const RoleIcon = ROLE_ICON_MAP[role ?? ''] || Box;
+  const { dialogRef } = useDialog(true, onClose);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-gray-900 rounded-2xl border border-gray-800 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/50">
+      <div className="absolute inset-0 overlay-backdrop" onClick={onClose} />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Details for ${file.name}`}
+        className="relative overlay-panel rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+      >
 
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 p-1.5 rounded-lg bg-black/30 hover:bg-black/50 transition-colors"
+          className="absolute top-4 right-4 z-10 p-1.5 ui-btn ui-btn-secondary"
         >
-          <X className="w-4 h-4 text-gray-300" />
+          <X className="w-4 h-4 text-soft" />
         </button>
 
         {/* Large preview */}
@@ -87,7 +95,7 @@ export function FileDetailModal({
               {file.fullPath && (
                 <button
                   onClick={onLoad3D}
-                  className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg shadow-lg transition-colors"
+                  className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2 ui-btn ui-btn-primary text-sm"
                 >
                   <Eye className="w-4 h-4" />
                   Load 3D Model
@@ -99,32 +107,32 @@ export function FileDetailModal({
 
         {/* Content */}
         <div className="p-6">
-          <h2 className="text-xl font-bold tracking-tight">{file.name}</h2>
+          <h2 className="text-xl font-bold tracking-tight brand-title">{file.name}</h2>
           <div className="flex items-center gap-3 mt-2 mb-5">
-            <span className="text-sm text-gray-400 font-medium">{file.size}</span>
+            <span className="text-sm text-soft font-medium">{file.size}</span>
             {role && (
               <span className={`${style.badge} text-white text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-md`}>
                 {role}
               </span>
             )}
             {viewerState.status === 'loaded' && (
-              <span className="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-md bg-blue-600 text-white">3D</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-md bg-cyan-300 text-slate-900">3D</span>
             )}
           </div>
 
           {/* Categories */}
-          <div className="border-t border-gray-800 pt-5 mb-5">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Categories</h3>
+          <div className="border-t border-[rgba(146,173,220,0.18)] pt-5 mb-5">
+            <h3 className="ui-section-label mb-3">Categories</h3>
             <div className="grid grid-cols-2 gap-3">
               {CATEGORY_IDS.map((catId) => (
                 <div key={catId}>
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider">{CATEGORY_LABELS[catId]}</label>
+                  <label className="text-[10px] text-faint uppercase tracking-wider">{CATEGORY_LABELS[catId]}</label>
                   <input
                     type="text"
                     value={fileCategoriesEdit[catId] || ''}
                     onChange={(e) => onCategoryChange(catId, e.target.value || undefined)}
                     placeholder="—"
-                    className="w-full text-sm bg-transparent border-b border-gray-800 focus:border-blue-500 text-gray-300 placeholder-gray-700 outline-none py-1"
+                    className="ui-input w-full text-sm py-1.5 px-2 mt-1"
                   />
                 </div>
               ))}
@@ -132,7 +140,7 @@ export function FileDetailModal({
             {categoriesChanged && (
               <button
                 onClick={onSaveCategories}
-                className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                className="mt-3 w-full py-2 ui-btn bg-[var(--success)] hover:bg-emerald-300 text-slate-900 text-sm font-semibold rounded-lg transition-colors"
               >
                 Save Categories
               </button>
@@ -140,21 +148,21 @@ export function FileDetailModal({
           </div>
 
           {/* Tags */}
-          <div className="border-t border-gray-800 pt-5">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <div className="border-t border-[rgba(146,173,220,0.18)] pt-5">
+            <h3 className="ui-section-label mb-3 flex items-center gap-2">
               <Tag className="w-3.5 h-3.5" />
               Tags
             </h3>
             <div className="flex flex-wrap gap-2 mb-4 min-h-[32px]">
               {fileTagsEdit.map((tag) => (
-                <span key={tag} className="group/tag flex items-center gap-1.5 px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300 ring-1 ring-gray-700">
+                <span key={tag} className="group/tag flex items-center gap-1.5 px-3 py-1 rounded-full text-sm text-soft ring-1 ring-[rgba(146,173,220,0.3)] bg-[rgba(13,23,41,0.82)]">
                   {tag}
-                  <button onClick={() => onRemoveTag(tag)} className="text-gray-600 hover:text-red-400 transition-colors">
+                  <button onClick={() => onRemoveTag(tag)} className="text-faint hover:text-red-300 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               ))}
-              {fileTagsEdit.length === 0 && <span className="text-sm text-gray-600 italic">No tags</span>}
+              {fileTagsEdit.length === 0 && <span className="text-sm text-faint italic">No tags</span>}
             </div>
             <div className="flex gap-2">
               <input
@@ -163,12 +171,12 @@ export function FileDetailModal({
                 onChange={(e) => onNewTagChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && onAddTag()}
                 placeholder="Add a tag..."
-                className="flex-1 px-3 py-2 bg-gray-800/60 border border-gray-700 rounded-lg text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-transparent transition-shadow"
+                className="ui-input flex-1 px-3 py-2 text-sm"
               />
               <button
                 onClick={onAddTag}
                 disabled={!newTag.trim()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white text-sm font-medium rounded-lg transition-colors"
+                className="ui-btn ui-btn-primary px-4 py-2 disabled:bg-[rgba(25,40,66,0.8)] disabled:text-faint text-sm font-medium"
               >
                 Add
               </button>
@@ -176,7 +184,7 @@ export function FileDetailModal({
             {tagsChanged && (
               <button
                 onClick={onSaveTags}
-                className="mt-4 w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                className="mt-4 w-full py-2.5 ui-btn bg-[var(--success)] hover:bg-emerald-300 text-slate-900 text-sm font-semibold rounded-lg transition-colors"
               >
                 Save Tags
               </button>
@@ -187,26 +195,26 @@ export function FileDetailModal({
           {file.metadata && (
             <>
               <div className="border-t border-gray-800 pt-5 mt-5">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Geometry</h3>
+                <h3 className="ui-section-label mb-3">Geometry</h3>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <span className="text-gray-500">Triangles</span>
-                    <p className="text-gray-200 font-medium">{file.metadata.triangleCount?.toLocaleString()}</p>
+                    <span className="text-soft">Triangles</span>
+                    <p className="text-slate-100 font-medium">{file.metadata.triangleCount?.toLocaleString()}</p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Dimensions</span>
-                    <p className="text-gray-200 font-medium">
+                    <span className="text-soft">Dimensions</span>
+                    <p className="text-slate-100 font-medium">
                       {file.metadata.dimensions
                         ? `${file.metadata.dimensions.x} × ${file.metadata.dimensions.y} × ${file.metadata.dimensions.z}`
                         : '—'}
                     </p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Surface Area</span>
-                    <p className="text-gray-200 font-medium">{file.metadata.surfaceArea?.toLocaleString()} mm²</p>
+                    <span className="text-soft">Surface Area</span>
+                    <p className="text-slate-100 font-medium">{file.metadata.surfaceArea?.toLocaleString()} mm²</p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Watertight</span>
+                    <span className="text-soft">Watertight</span>
                     <p className={`font-medium ${file.metadata.isWatertight ? 'text-emerald-400' : 'text-amber-400'}`}>
                       {file.metadata.isWatertight ? 'Yes' : 'No'}
                     </p>
@@ -215,12 +223,12 @@ export function FileDetailModal({
               </div>
 
               {file.metadata.printEstimate?.volumeCm3 != null && (
-                <div className="border-t border-gray-800 pt-5 mt-5">
+                <div className="border-t border-[rgba(146,173,220,0.18)] pt-5 mt-5">
                   <div className="relative flex items-center justify-between mb-3">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Print Estimate</h3>
+                    <h3 className="ui-section-label">Print Estimate</h3>
                     <button
                       onClick={onTogglePrintSettings}
-                      className="p-1 rounded-md hover:bg-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
+                      className="p-1 rounded-md ui-btn ui-btn-ghost"
                     >
                       <Settings className="w-3.5 h-3.5" />
                     </button>
@@ -233,37 +241,37 @@ export function FileDetailModal({
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <span className="text-gray-500">Volume</span>
-                      <p className="text-gray-200 font-medium">{file.metadata.printEstimate.volumeCm3} cm³</p>
+                      <span className="text-soft">Volume</span>
+                      <p className="text-slate-100 font-medium">{file.metadata.printEstimate.volumeCm3} cm³</p>
                     </div>
                     <div>
-                      <span className="text-gray-500">Est. Weight</span>
-                      <p className="text-gray-200 font-medium">~{file.metadata.printEstimate.estimatedGrams}g</p>
+                      <span className="text-soft">Est. Weight</span>
+                      <p className="text-slate-100 font-medium">~{file.metadata.printEstimate.estimatedGrams}g</p>
                     </div>
                   </div>
-                  <p className="text-[10px] text-gray-600 mt-2">Based on current print settings. Rough estimate only.</p>
+                  <p className="text-[10px] text-faint mt-2">Based on current print settings. Rough estimate only.</p>
                 </div>
               )}
 
-              <div className="border-t border-gray-800 pt-5 mt-5">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">File Info</h3>
+              <div className="border-t border-[rgba(146,173,220,0.18)] pt-5 mt-5">
+                <h3 className="ui-section-label mb-3">File Info</h3>
                 <div className="space-y-2 text-sm">
                   {file.metadata.originalFilename && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Original</span>
-                      <span className="text-gray-300 font-mono text-xs">{file.metadata.originalFilename}</span>
+                      <span className="text-soft">Original</span>
+                      <span className="text-slate-200 font-mono text-xs">{file.metadata.originalFilename}</span>
                     </div>
                   )}
                   {file.metadata.headerText && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Header</span>
-                      <span className="text-gray-300 text-xs truncate max-w-[200px]">{file.metadata.headerText}</span>
+                      <span className="text-soft">Header</span>
+                      <span className="text-slate-200 text-xs truncate max-w-[200px]">{file.metadata.headerText}</span>
                     </div>
                   )}
                   {file.metadata.importedAt && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Imported</span>
-                      <span className="text-gray-300 text-xs">{new Date(file.metadata.importedAt).toLocaleDateString()}</span>
+                      <span className="text-soft">Imported</span>
+                      <span className="text-slate-200 text-xs">{new Date(file.metadata.importedAt).toLocaleDateString()}</span>
                     </div>
                   )}
                 </div>

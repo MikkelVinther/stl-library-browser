@@ -17,17 +17,17 @@ export default function PrintSettingsPopover({ onClose, onSave }: PrintSettingsP
   };
 
   return (
-    <div className="absolute right-0 top-full mt-2 w-64 bg-gray-800 border border-gray-700 rounded-xl shadow-xl p-4 z-50 space-y-4">
-      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+    <div className="absolute right-0 top-full mt-2 w-64 overlay-panel rounded-xl p-4 z-50 space-y-4">
+      <h4 className="ui-section-label">
         Print Settings
       </h4>
 
       <div>
-        <label className="text-xs text-gray-500 mb-1 block">Material</label>
+        <label className="text-xs text-soft mb-1 block">Material</label>
         <select
           value={settings.material}
           onChange={(e) => setSettings((s) => ({ ...s, material: e.target.value }))}
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-200 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="ui-input w-full text-sm px-3 py-2"
         >
           {Object.entries(MATERIALS).map(([key, { label, density }]) => (
             <option key={key} value={key}>
@@ -38,7 +38,7 @@ export default function PrintSettingsPopover({ onClose, onSave }: PrintSettingsP
       </div>
 
       <div>
-        <label className="text-xs text-gray-500 mb-1 block">
+        <label className="text-xs text-soft mb-1 block">
           Infill: {settings.infillPercent}%
         </label>
         <input
@@ -50,13 +50,13 @@ export default function PrintSettingsPopover({ onClose, onSave }: PrintSettingsP
           onChange={(e) =>
             setSettings((s) => ({ ...s, infillPercent: +e.target.value }))
           }
-          className="w-full accent-blue-500"
+          className="w-full accent-cyan-300"
         />
       </div>
 
       <button
         onClick={handleSave}
-        className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors"
+        className="w-full py-2 ui-btn ui-btn-primary text-xs font-semibold"
       >
         Save Settings
       </button>

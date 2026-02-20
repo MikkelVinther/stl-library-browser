@@ -43,12 +43,12 @@ export default function BulkActionBar({
   };
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-3 bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl shadow-black/50">
-      <span className="text-sm font-semibold text-gray-200 whitespace-nowrap">
+    <div className="fixed bottom-4 lg:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 lg:px-5 py-3 overlay-panel rounded-2xl max-w-[calc(100vw-1rem)] overflow-x-auto">
+      <span className="text-sm font-semibold text-slate-100 whitespace-nowrap">
         {count} selected
       </span>
 
-      <div className="w-px h-6 bg-gray-700" />
+      <div className="w-px h-6 bg-[rgba(146,173,220,0.24)]" />
 
       {/* Add Tags */}
       {showTagInput ? (
@@ -60,19 +60,19 @@ export default function BulkActionBar({
             onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
             placeholder="tag1, tag2..."
             autoFocus
-            className="w-36 bg-gray-900 border border-gray-600 rounded-lg text-xs text-gray-200 px-2 py-1.5 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="ui-input w-36 text-xs px-2 py-1.5"
           />
-          <button onClick={handleAddTag} className="px-2 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-500">
+          <button onClick={handleAddTag} className="ui-btn ui-btn-primary px-2 py-1.5 text-xs">
             Add
           </button>
-          <button onClick={() => setShowTagInput(false)} className="p-1.5 text-gray-500 hover:text-gray-300">
+          <button onClick={() => setShowTagInput(false)} className="ui-btn ui-btn-ghost p-1.5">
             <X className="w-3 h-3" />
           </button>
         </div>
       ) : (
         <button
           onClick={() => setShowTagInput(true)}
-          className="px-3 py-1.5 text-xs font-medium text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+          className="ui-btn ui-btn-secondary px-3 py-1.5 text-xs font-medium whitespace-nowrap"
         >
           Add Tags
         </button>
@@ -81,7 +81,7 @@ export default function BulkActionBar({
       {/* Set Category */}
       {activeCatId ? (
         <div className="flex gap-1 items-center">
-          <span className="text-[10px] text-gray-500">{CATEGORY_LABELS[activeCatId]}:</span>
+          <span className="text-[10px] text-faint whitespace-nowrap">{CATEGORY_LABELS[activeCatId]}:</span>
           <input
             type="text"
             value={catInput}
@@ -92,12 +92,12 @@ export default function BulkActionBar({
             }}
             placeholder="Value..."
             autoFocus
-            className="w-24 bg-gray-900 border border-gray-600 rounded-lg text-xs text-gray-200 px-2 py-1.5 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="ui-input w-24 text-xs px-2 py-1.5"
           />
-          <button onClick={handleSetCategory} className="px-2 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-500">
+          <button onClick={handleSetCategory} className="ui-btn ui-btn-primary px-2 py-1.5 text-xs">
             Set
           </button>
-          <button onClick={() => { setActiveCatId(null); setCatInput(''); }} className="p-1.5 text-gray-500 hover:text-gray-300">
+          <button onClick={() => { setActiveCatId(null); setCatInput(''); }} className="ui-btn ui-btn-ghost p-1.5">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -108,7 +108,7 @@ export default function BulkActionBar({
             if (e.target.value) setActiveCatId(e.target.value);
             e.target.value = '';
           }}
-          className="bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+          className="ui-input text-xs px-2 py-1.5 cursor-pointer min-w-[118px]"
         >
           <option value="" disabled>Set Category</option>
           {CATEGORY_IDS.map((catId) => (
@@ -117,12 +117,12 @@ export default function BulkActionBar({
         </select>
       )}
 
-      <div className="w-px h-6 bg-gray-700" />
+      <div className="w-px h-6 bg-[rgba(146,173,220,0.24)]" />
 
       {count < totalFiltered && (
         <button
           onClick={onSelectAll}
-          className="px-3 py-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors whitespace-nowrap"
+          className="ui-btn ui-btn-ghost px-3 py-1.5 text-xs text-cyan-200 whitespace-nowrap"
         >
           Select all {totalFiltered}
         </button>
@@ -130,7 +130,7 @@ export default function BulkActionBar({
 
       <button
         onClick={onClear}
-        className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors whitespace-nowrap"
+        className="ui-btn ui-btn-ghost px-3 py-1.5 text-xs whitespace-nowrap"
       >
         Deselect
       </button>

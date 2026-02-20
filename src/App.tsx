@@ -1,4 +1,4 @@
-import { Box } from 'lucide-react';
+import { Box, Sun, Moon } from 'lucide-react';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import ImportProgress from './components/ImportProgress';
 import BulkActionBar from './components/BulkActionBar';
@@ -15,6 +15,7 @@ import { useSelection } from './hooks/useSelection';
 import { useImport } from './hooks/useImport';
 import { useFileDetail } from './hooks/useFileDetail';
 import { useDragDrop } from './hooks/useDragDrop';
+import { useTheme } from './hooks/useTheme';
 
 export default function App() {
   const {
@@ -37,6 +38,7 @@ export default function App() {
   } = useImport({ addFiles, setDirectories });
 
   const { isDragging, dragHandlers } = useDragDrop(handleDroppedFiles);
+  const { theme, toggleTheme } = useTheme();
 
   const {
     selectedFile, fileTagsEdit, fileCategoriesEdit, setFileCategoriesEdit,
@@ -56,7 +58,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100" {...dragHandlers}>
+    <div className="app-shell" {...dragHandlers}>
       <input ref={fileInputRef} type="file" accept=".stl" multiple className="hidden" onChange={handleFileInput} />
 
       <DragOverlay isDragging={isDragging} />
@@ -96,16 +98,28 @@ export default function App() {
       </MobileFilterDrawer>
 
       <div className="flex">
-        <aside className="hidden lg:flex flex-col w-72 h-screen sticky top-0 border-r border-gray-800 bg-gray-900/60 backdrop-blur-sm">
-          <div className="p-5 pb-3 border-b border-gray-800/60">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 bg-blue-500/10 rounded-lg">
-                <Box className="w-5 h-5 text-blue-400" />
+        <aside className="hidden lg:flex flex-col w-72 h-screen sticky top-0 surface-panel border-r-0 rounded-r-3xl">
+          <div className="p-5 pb-3 border-b border-[rgba(146,173,220,0.18)]">
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+              <div className="p-1.5 rounded-lg bg-[rgba(58,203,255,0.14)] ring-1 ring-[rgba(58,203,255,0.35)]">
+                <Box className="w-5 h-5 text-cyan-200" />
               </div>
-              <div>
-                <h1 className="text-sm font-bold tracking-tight leading-tight">STL Library</h1>
-                <p className="text-[10px] text-gray-500 font-medium uppercase tracking-widest">Terrain Browser</p>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-base font-bold leading-tight brand-title">STL Library</h1>
+                <p className="text-[10px] text-faint font-semibold uppercase tracking-[0.18em]">Terrain Browser</p>
               </div>
+              <button
+                onClick={toggleTheme}
+                aria-label={theme === 'prototype-dark' ? 'Switch to presentation theme' : 'Switch to prototype theme'}
+                title={theme === 'prototype-dark' ? 'Presentation theme' : 'Prototype theme'}
+                className="p-1.5 ui-btn ui-btn-ghost flex-shrink-0"
+              >
+                {theme === 'prototype-dark' ? (
+                  <Sun className="w-4 h-4 text-soft" />
+                ) : (
+                  <Moon className="w-4 h-4 text-soft" />
+                )}
+              </button>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-5">
@@ -115,8 +129,8 @@ export default function App() {
 
         <main className="flex-1 min-w-0 p-4 lg:p-6">
           {isRestoring && (
-            <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-400">
-              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            <div className="flex items-center gap-2 mb-4 px-3 py-2 surface-panel rounded-xl text-sm text-soft">
+              <div className="w-4 h-4 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin" />
               Restoring library...
             </div>
           )}

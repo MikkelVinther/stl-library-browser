@@ -220,21 +220,55 @@ function saveFileCategoryValues(fileId, categories) {
 /** Internal: write a file row with the given import_status */
 function saveFileWithStatus(data, status) {
   const db = getDB();
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO files
-      (id, directory_id, relative_path, name, original_filename, full_path,
-       size_bytes, size_display, thumbnail, import_status, imported_at, last_modified, metadata_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
   const metadataJson = data.metadata ? JSON.stringify(data.metadata) : null;
-  stmt.run(
-    data.id, data.directoryId || null, data.relativePath || '', data.name,
-    data.metadata?.originalFilename || data.name, data.fullPath || null,
-    data.sizeBytes || 0, data.size || '0 MB',
-    data.thumbnail || null, status,
-    data.metadata?.importedAt || Date.now(),
-    data.lastModified || null, metadataJson
-  );
+
+  if (status === 'pending') {
+    // For pending writes: if a confirmed file with the same path already exists,
+    // update geometry/metadata but preserve import_status = 'confirmed' so
+    // re-scanning doesn't downgrade user-confirmed files back to pending.
+    db.prepare(`
+      INSERT INTO files
+        (id, directory_id, relative_path, name, original_filename, full_path,
+         size_bytes, size_display, thumbnail, import_status, imported_at, last_modified, metadata_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(directory_id, relative_path) DO UPDATE SET
+        name = excluded.name,
+        original_filename = excluded.original_filename,
+        full_path = excluded.full_path,
+        size_bytes = excluded.size_bytes,
+        size_display = excluded.size_display,
+        thumbnail = excluded.thumbnail,
+        last_modified = excluded.last_modified,
+        metadata_json = excluded.metadata_json,
+        import_status = CASE
+          WHEN import_status = 'confirmed' THEN 'confirmed'
+          ELSE excluded.import_status
+        END
+    `).run(
+      data.id, data.directoryId || null, data.relativePath || '', data.name,
+      data.metadata?.originalFilename || data.name, data.fullPath || null,
+      data.sizeBytes || 0, data.size || '0 MB',
+      data.thumbnail || null, status,
+      data.metadata?.importedAt || Date.now(),
+      data.lastModified || null, metadataJson
+    );
+  } else {
+    // For confirmed/direct saves: full replace is acceptable
+    db.prepare(`
+      INSERT OR REPLACE INTO files
+        (id, directory_id, relative_path, name, original_filename, full_path,
+         size_bytes, size_display, thumbnail, import_status, imported_at, last_modified, metadata_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.id, data.directoryId || null, data.relativePath || '', data.name,
+      data.metadata?.originalFilename || data.name, data.fullPath || null,
+      data.sizeBytes || 0, data.size || '0 MB',
+      data.thumbnail || null, status,
+      data.metadata?.importedAt || Date.now(),
+      data.lastModified || null, metadataJson
+    );
+  }
+
   if (data.tags) saveFileTags(data.id, data.tags);
   if (data.categories) saveFileCategoryValues(data.id, data.categories);
 }
@@ -335,10 +369,24 @@ exports.getAllDirectories = () => {
 
 exports.saveDirectory = (data) => {
   const db = getDB();
+  // Use UPSERT: if path already exists, update name/timestamp but keep the original id (and all FK-linked files).
   db.prepare(`
-    INSERT OR REPLACE INTO directories (id, name, path, added_at, last_scanned_at)
+    INSERT INTO directories (id, name, path, added_at, last_scanned_at)
     VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(path) DO UPDATE SET
+      name = excluded.name,
+      last_scanned_at = excluded.last_scanned_at
   `).run(data.id, data.name, data.path, data.addedAt || Date.now(), data.lastScannedAt || null);
+
+  // Return the canonical row (existing id on re-import, newly inserted id on first import)
+  const row = db.prepare('SELECT * FROM directories WHERE path = ?').get(data.path);
+  return {
+    id: row.id,
+    name: row.name,
+    path: row.path,
+    addedAt: row.added_at,
+    lastScannedAt: row.last_scanned_at,
+  };
 };
 
 exports.deleteDirectory = (id) => {
