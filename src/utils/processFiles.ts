@@ -6,21 +6,24 @@ import { tokenizeFilename } from './filenameTokenizer';
 import { estimateWeight, getPrintSettings } from './printEstimate';
 import { readFile } from './electronBridge';
 import { classifyFile } from './categoryClassifier';
+import type { STLFile, FileInfo } from '../types/index';
+
+interface ProcessCallbacks {
+  onFileProcessed: (entry: STLFile) => void;
+  onProgress: (info: { processed: number; currentName: string }) => void;
+  onError: (name: string, err: unknown) => void;
+  shouldCancel?: () => boolean;
+  directoryId?: string;
+}
 
 /**
  * Process an array of file info objects from the main-process directory scan.
  * Reads each file via IPC, generates thumbnail + metadata, then disposes geometry.
  * No binary data or geometry is kept in the returned entries.
- *
- * @param {Array<{fullPath: string, relativePath: string, sizeBytes: number, lastModified: number}>} fileInfos
- * @param {Object} callbacks
- * @param {function} callbacks.onFileProcessed - Called with processed entry after each file
- * @param {function} callbacks.onProgress - Called with {processed, currentName} after each file
- * @param {function} callbacks.onError - Called with (filename, error) on per-file failure
- * @param {function} [callbacks.shouldCancel] - Returns true to stop processing
- * @param {string} [callbacks.directoryId] - The directory ID these files belong to
  */
-export async function processFiles(fileInfos, { onFileProcessed, onProgress, onError, shouldCancel, directoryId }) {
+export async function processFiles(fileInfos: FileInfo[], {
+  onFileProcessed, onProgress, onError, shouldCancel, directoryId,
+}: ProcessCallbacks): Promise<void> {
   const loader = new STLLoader();
   let processed = 0;
 
@@ -30,14 +33,14 @@ export async function processFiles(fileInfos, { onFileProcessed, onProgress, onE
     // Yield to main thread between files
     await new Promise((r) => setTimeout(r, 0));
 
-    const fileName = fileInfo.relativePath.split('/').pop();
+    const fileName = fileInfo.relativePath.split('/').pop() ?? fileInfo.relativePath;
 
     try {
-      let arrayBuffer;
+      let arrayBuffer: ArrayBuffer;
       if (fileInfo.fullPath) {
         const buffer = await readFile(fileInfo.fullPath);
         if (!buffer) throw new Error('File not found');
-        arrayBuffer = buffer.buffer || buffer;
+        arrayBuffer = (buffer as unknown as { buffer: ArrayBuffer }).buffer ?? buffer;
       } else if (fileInfo._browserFile) {
         arrayBuffer = await fileInfo._browserFile.arrayBuffer();
       } else {
@@ -65,7 +68,7 @@ export async function processFiles(fileInfos, { onFileProcessed, onProgress, onE
         geometry: geoStats,
       });
 
-      const entry = {
+      const entry: STLFile = {
         id: crypto.randomUUID(),
         name: fileName.replace(/\.stl$/i, '').replace(/[_-]/g, ' '),
         relativePath: fileInfo.relativePath,

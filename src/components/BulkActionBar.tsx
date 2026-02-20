@@ -2,6 +2,15 @@ import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { CATEGORY_IDS, CATEGORY_LABELS } from '../utils/categoryClassifier';
 
+interface BulkActionBarProps {
+  count: number;
+  totalFiltered: number;
+  onAddTags: (tags: string[]) => void;
+  onSetCategory: (catId: string, value: string) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+}
+
 export default function BulkActionBar({
   count,
   totalFiltered,
@@ -9,11 +18,11 @@ export default function BulkActionBar({
   onSetCategory,
   onSelectAll,
   onClear,
-}) {
+}: BulkActionBarProps) {
   const [tagInput, setTagInput] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
   const [catInput, setCatInput] = useState('');
-  const [activeCatId, setActiveCatId] = useState(null);
+  const [activeCatId, setActiveCatId] = useState<string | null>(null);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();

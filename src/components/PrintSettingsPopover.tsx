@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { MATERIALS, getPrintSettings, savePrintSettings } from '../utils/printEstimate';
+import type { PrintSettings } from '../types/index';
 
-export default function PrintSettingsPopover({ onClose, onSave }) {
+interface PrintSettingsPopoverProps {
+  onClose: () => void;
+  onSave: (settings: PrintSettings) => void;
+}
+
+export default function PrintSettingsPopover({ onClose, onSave }: PrintSettingsPopoverProps) {
   const [settings, setSettings] = useState(getPrintSettings);
 
   const handleSave = () => {

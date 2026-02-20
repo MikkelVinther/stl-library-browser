@@ -4,9 +4,11 @@
  * filename keywords, and geometry analysis.
  */
 
+import type { CategoryValues } from '../types/index';
+
 // ── Keyword dictionaries ──
 
-const ROLE_KEYWORDS = {
+const ROLE_KEYWORDS: Record<string, string[]> = {
   scatter: ['scatter', 'debris', 'rock', 'barrel', 'crate', 'bush', 'tree', 'stump', 'mushroom', 'crystal', 'candle', 'torch'],
   tile: ['tile', 'floor', 'wall', 'corner', 'straight', 'corridor', 'doorway', 'entrance', 'passage'],
   terrain: ['terrain', 'cliff', 'hill', 'mountain', 'bridge', 'ruin', 'building', 'tower', 'castle', 'house', 'tavern'],
@@ -16,12 +18,12 @@ const ROLE_KEYWORDS = {
   base: ['base', 'pedestal', 'platform', 'stand'],
 };
 
-const FILL_KEYWORDS = {
+const FILL_KEYWORDS: Record<string, string[]> = {
   hollow: ['hollow', 'hollowed'],
   solid: ['solid', 'filled', 'full'],
 };
 
-const CREATURE_KEYWORDS = {
+const CREATURE_KEYWORDS: Record<string, string[]> = {
   demon: ['demon', 'devil', 'fiend', 'imp'],
   dragon: ['dragon', 'drake', 'wyvern', 'wyrm'],
   undead: ['undead', 'zombie', 'skeleton', 'lich', 'vampire', 'ghost', 'wraith'],
@@ -30,7 +32,7 @@ const CREATURE_KEYWORDS = {
   goblinoid: ['goblin', 'hobgoblin', 'bugbear', 'kobold'],
 };
 
-const RACE_KEYWORDS = {
+const RACE_KEYWORDS: Record<string, string[]> = {
   human: ['human', 'man', 'woman', 'peasant', 'knight', 'soldier'],
   elf: ['elf', 'elven', 'elfish'],
   dwarf: ['dwarf', 'dwarven'],
@@ -39,7 +41,7 @@ const RACE_KEYWORDS = {
   tiefling: ['tiefling'],
 };
 
-const CLASS_KEYWORDS = {
+const CLASS_KEYWORDS: Record<string, string[]> = {
   fighter: ['fighter', 'warrior', 'barbarian', 'paladin', 'knight', 'soldier'],
   wizard: ['wizard', 'mage', 'sorcerer', 'warlock', 'witch'],
   rogue: ['rogue', 'thief', 'assassin', 'ranger'],
@@ -50,7 +52,7 @@ const CLASS_KEYWORDS = {
 
 // ── Size patterns matched against raw filename, not just tokens ──
 
-const SIZE_PATTERNS = [
+const SIZE_PATTERNS: Array<{ pattern: RegExp; value: string }> = [
   { pattern: /\b25\s*mm\b/i, value: '25mm' },
   { pattern: /\b28\s*mm\b/i, value: '28mm' },
   { pattern: /\b32\s*mm\b/i, value: '32mm' },
@@ -65,8 +67,8 @@ const SIZE_PATTERNS = [
  * Match tokens against a keyword dictionary.
  * Returns the value whose keyword list has the most overlap, or null.
  */
-function matchDictionary(tokens, dictionary) {
-  let bestValue = null;
+function matchDictionary(tokens: string[], dictionary: Record<string, string[]>): string | null {
+  let bestValue: string | null = null;
   let bestCount = 0;
 
   for (const [value, keywords] of Object.entries(dictionary)) {
@@ -84,7 +86,7 @@ function matchDictionary(tokens, dictionary) {
  * Infer miniature scale from geometry height.
  * Only applies to small objects likely to be miniatures (< 100mm tall).
  */
-function inferScale(dimensions) {
+function inferScale(dimensions?: { x: number; y: number; z: number }): string | null {
   if (!dimensions) return null;
   const height = dimensions.z; // Z is typically "up" in STL files
   if (height <= 0) return null;
@@ -103,7 +105,7 @@ function inferScale(dimensions) {
 /**
  * Extract size from filename using regex patterns.
  */
-function extractSize(filename) {
+function extractSize(filename: string): string | null {
   for (const { pattern, value } of SIZE_PATTERNS) {
     if (pattern.test(filename)) return value;
   }
@@ -112,18 +114,19 @@ function extractSize(filename) {
 
 // ── Main classifier ──
 
+interface ClassifyParams {
+  relativePath: string;
+  filename: string;
+  tokens: string[];
+  geometry?: { dimensions?: { x: number; y: number; z: number } };
+}
+
 /**
  * Classify a file into structured categories.
- *
- * @param {Object} params
- * @param {string} params.relativePath - Path relative to import root (e.g. "Creator/Collection/file.stl")
- * @param {string} params.filename - Just the filename (e.g. "goblin_warrior_32mm.stl")
- * @param {string[]} params.tokens - Tokens from filenameTokenizer
- * @param {Object} [params.geometry] - Geometry analysis results (dimensions, etc.)
- * @returns {Object} Category values: { creator, collection, role, size, fill, creature, race, class }
+ * Returns a CategoryValues object with only non-null keys set.
  */
-export function classifyFile({ relativePath, filename, tokens, geometry }) {
-  const categories = {};
+export function classifyFile({ relativePath, filename, tokens, geometry }: ClassifyParams): CategoryValues {
+  const categories: CategoryValues = {};
 
   // 1. Folder structure (highest priority)
   const pathParts = relativePath.split('/').filter(Boolean);
@@ -138,28 +141,30 @@ export function classifyFile({ relativePath, filename, tokens, geometry }) {
   }
 
   // 2. Filename keyword matching
-  categories.role = matchDictionary(tokens, ROLE_KEYWORDS);
-  categories.fill = matchDictionary(tokens, FILL_KEYWORDS);
-  categories.creature = matchDictionary(tokens, CREATURE_KEYWORDS);
-  categories.race = matchDictionary(tokens, RACE_KEYWORDS);
-  categories.class = matchDictionary(tokens, CLASS_KEYWORDS);
+  const role = matchDictionary(tokens, ROLE_KEYWORDS);
+  const fill = matchDictionary(tokens, FILL_KEYWORDS);
+  const creature = matchDictionary(tokens, CREATURE_KEYWORDS);
+  const race = matchDictionary(tokens, RACE_KEYWORDS);
+  const cls = matchDictionary(tokens, CLASS_KEYWORDS);
+
+  if (role) categories.role = role;
+  if (fill) categories.fill = fill;
+  if (creature) categories.creature = creature;
+  if (race) categories.race = race;
+  if (cls) categories.class = cls;
 
   // 3. Size: filename patterns first, then geometry fallback
-  categories.size = extractSize(filename) || inferScale(geometry?.dimensions);
-
-  // Strip null values
-  for (const key of Object.keys(categories)) {
-    if (categories[key] == null) delete categories[key];
-  }
+  const size = extractSize(filename) ?? inferScale(geometry?.dimensions);
+  if (size) categories.size = size;
 
   return categories;
 }
 
 /** All category IDs in display order */
-export const CATEGORY_IDS = ['creator', 'collection', 'role', 'size', 'fill', 'creature', 'race', 'class'];
+export const CATEGORY_IDS: string[] = ['creator', 'collection', 'role', 'size', 'fill', 'creature', 'race', 'class'];
 
 /** Human-readable labels */
-export const CATEGORY_LABELS = {
+export const CATEGORY_LABELS: Record<string, string> = {
   creator: 'Creator',
   collection: 'Collection',
   role: 'Role',

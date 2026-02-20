@@ -5,7 +5,7 @@ const NOISE_WORDS = new Set([
 
 const VERSION_RE = /^v?\d+$/i;
 
-export function tokenizeFilename(filename) {
+export function tokenizeFilename(filename: string): string[] {
   // Strip extension
   const base = filename.replace(/\.stl$/i, '');
 
@@ -18,8 +18,8 @@ export function tokenizeFilename(filename) {
     .filter(Boolean);
 
   // Deduplicate and filter noise
-  const seen = new Set();
-  const tokens = [];
+  const seen = new Set<string>();
+  const tokens: string[] = [];
   for (const token of raw) {
     if (token.length < 2) continue;
     if (VERSION_RE.test(token)) continue;

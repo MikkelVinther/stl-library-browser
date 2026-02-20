@@ -1,4 +1,4 @@
-export function parseSTLHeader(buffer) {
+export function parseSTLHeader(buffer: ArrayBuffer): string | null {
   const bytes = new Uint8Array(buffer, 0, Math.min(80, buffer.byteLength));
 
   // Decode as ASCII and trim null bytes

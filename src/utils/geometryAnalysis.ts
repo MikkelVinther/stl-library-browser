@@ -1,6 +1,15 @@
 import * as THREE from 'three';
+import type { BufferGeometry } from 'three';
 
-export function analyzeGeometry(geometry) {
+export interface GeometryStats {
+  triangleCount: number;
+  dimensions: { x: number; y: number; z: number };
+  volume: number | null;
+  surfaceArea: number;
+  isWatertight: boolean;
+}
+
+export function analyzeGeometry(geometry: BufferGeometry): GeometryStats {
   const position = geometry.attributes.position;
   const index = geometry.index;
   const triangleCount = index ? index.count / 3 : position.count / 3;
@@ -19,15 +28,15 @@ export function analyzeGeometry(geometry) {
 
   let signedVolume = 0;
   let surfaceArea = 0;
-  const edgeCounts = new Map();
+  const edgeCounts = new Map<string, number>();
 
-  const addEdge = (i1, i2) => {
+  const addEdge = (i1: number, i2: number): void => {
     const key = i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
     edgeCounts.set(key, (edgeCounts.get(key) || 0) + 1);
   };
 
   for (let i = 0; i < triangleCount; i++) {
-    let ia, ib, ic;
+    let ia: number, ib: number, ic: number;
     if (index) {
       ia = index.getX(i * 3);
       ib = index.getX(i * 3 + 1);

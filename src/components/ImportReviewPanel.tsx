@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Check, Loader2, ChevronDown, ChevronRight, Pencil, Plus } from 'lucide-react';
 import { CATEGORY_IDS, CATEGORY_LABELS } from '../utils/categoryClassifier';
+import type { STLFile } from '../types/index';
+
+interface ImportReviewPanelProps {
+  files: STLFile[];
+  onConfirm: (files: STLFile[]) => void;
+  onCancel: () => void;
+  isProcessing?: boolean;
+  processedCount?: number;
+  totalCount?: number;
+}
 
 export default function ImportReviewPanel({
   files,
@@ -9,15 +19,15 @@ export default function ImportReviewPanel({
   isProcessing = false,
   processedCount = 0,
   totalCount = 0,
-}) {
-  const [editedFiles, setEditedFiles] = useState(() => [...files]);
-  const [expandedCategory, setExpandedCategory] = useState(null); // 'role' or null
-  const [expandedValue, setExpandedValue] = useState(null); // 'scatter' or null
-  const [renamingGroup, setRenamingGroup] = useState(null); // { catId, oldValue }
+}: ImportReviewPanelProps) {
+  const [editedFiles, setEditedFiles] = useState<STLFile[]>(() => [...files]);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [expandedValue, setExpandedValue] = useState<string | null>(null);
+  const [renamingGroup, setRenamingGroup] = useState<{ catId: string; oldValue: string } | null>(null);
   const [renameInput, setRenameInput] = useState('');
-  const [addingTo, setAddingTo] = useState(null); // catId currently adding a new value to
+  const [addingTo, setAddingTo] = useState<string | null>(null);
   const [newValueInput, setNewValueInput] = useState('');
-  const [selectedFileIds, setSelectedFileIds] = useState(new Set());
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const prevLenRef = useRef(files.length);
 
   // Append new files as they arrive from the streaming pipeline
@@ -55,7 +65,7 @@ export default function ImportReviewPanel({
     });
   }, [editedFiles]);
 
-  const updateFileCategories = (fileIds, catId, newValue) => {
+  const updateFileCategories = (fileIds: Set<string>, catId: string, newValue: string | undefined) => {
     setEditedFiles((prev) =>
       prev.map((f) => {
         if (!fileIds.has(f.id)) return f;
@@ -130,7 +140,7 @@ export default function ImportReviewPanel({
     : [];
 
   // Show unclassified files when clicking "unclassified" chip
-  const [showUnclassified, setShowUnclassified] = useState(null); // catId
+  const [showUnclassified, setShowUnclassified] = useState<string | null>(null); // catId
   const unclassifiedFiles = showUnclassified
     ? categorySummary.find((c) => c.id === showUnclassified)?.unclassified || []
     : [];

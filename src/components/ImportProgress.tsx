@@ -1,7 +1,17 @@
 import React from 'react';
 import { X, Loader2, CheckCircle2 } from 'lucide-react';
 
-export default function ImportProgress({ processed, total, currentName, errors, isComplete, onCancel, onOpenReview }) {
+interface ImportProgressProps {
+  processed: number;
+  total: number;
+  currentName: string | null;
+  errors: number;
+  isComplete: boolean;
+  onCancel: () => void;
+  onOpenReview: () => void;
+}
+
+export default function ImportProgress({ processed, total, currentName, errors, isComplete, onCancel, onOpenReview }: ImportProgressProps) {
   const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
   return (
