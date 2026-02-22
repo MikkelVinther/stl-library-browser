@@ -63,3 +63,10 @@ ipcMain.handle('dialog:openFolder', async () => {
 ipcMain.handle('fs:scanDirectory', (_, folderPath) => scanDirectory(folderPath));
 ipcMain.handle('fs:readFile', (_, filePath) => readFile(filePath));
 ipcMain.handle('fs:countSTLFiles', (_, folderPath) => countSTLFiles(folderPath));
+
+// ── Scene IPC handlers ──
+ipcMain.handle('db:getAllScenes', () => db.getAllScenes());
+ipcMain.handle('db:getScene', (_, id) => db.getScene(id));
+ipcMain.handle('db:saveScene', (_, data) => db.saveScene(data));
+ipcMain.handle('db:saveSceneObjects', (_, sceneId, objects) => db.saveSceneObjects(sceneId, objects));
+ipcMain.handle('db:deleteScene', (_, id) => db.deleteScene(id));

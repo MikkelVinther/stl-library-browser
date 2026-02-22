@@ -23,5 +23,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setCategoryValues: (fileId, values) => ipcRenderer.invoke('db:setCategoryValues', fileId, values),
     bulkSetCategoryValue: (fileIds, categoryId, value) => ipcRenderer.invoke('db:bulkSetCategoryValue', fileIds, categoryId, value),
     bulkSetCategoryValues: (entries) => ipcRenderer.invoke('db:bulkSetCategoryValues', entries),
+    getAllScenes: () => ipcRenderer.invoke('db:getAllScenes'),
+    getScene: (id) => ipcRenderer.invoke('db:getScene', id),
+    saveScene: (data) => ipcRenderer.invoke('db:saveScene', data),
+    saveSceneObjects: (sceneId, objects) => ipcRenderer.invoke('db:saveSceneObjects', sceneId, objects),
+    deleteScene: (id) => ipcRenderer.invoke('db:deleteScene', id),
   },
 });
