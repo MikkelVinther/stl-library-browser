@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteFile: (id) => ipcRenderer.invoke('db:deleteFile', id),
     savePendingFile: (data) => ipcRenderer.invoke('db:savePendingFile', data),
     confirmPendingFiles: (ids) => ipcRenderer.invoke('db:confirmPendingFiles', ids),
-    cancelPendingFiles: () => ipcRenderer.invoke('db:cancelPendingFiles'),
+    cancelPendingFiles: (sessionIds) => ipcRenderer.invoke('db:cancelPendingFiles', sessionIds),
     getAllDirectories: () => ipcRenderer.invoke('db:getAllDirectories'),
     saveDirectory: (data) => ipcRenderer.invoke('db:saveDirectory', data),
     deleteDirectory: (id) => ipcRenderer.invoke('db:deleteDirectory', id),

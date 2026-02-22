@@ -27,14 +27,22 @@ interface UseImportParams {
   setDirectories: Dispatch<SetStateAction<DirectoryEntry[]>>;
 }
 
+function toImportError(name: string, err: unknown): ImportError {
+  if (err instanceof Error) return { name, err };
+  const message = typeof err === 'string' ? err : 'Unknown error';
+  return { name, err: new Error(message) };
+}
+
 export function useImport({ addFiles, setDirectories }: UseImportParams) {
   const [importState, setImportState] = useState<ImportState>(INITIAL_STATE);
   const cancelRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Tracks { clientId -> canonicalDbId } for files written this session.
+  // Tracks { clientId -> canonicalDbId } for all files successfully staged this session.
   // On re-import, the DB upsert may return a different (pre-existing) id.
   const idMap = useRef<Map<string, string>>(new Map());
   const pendingWrites = useRef<Promise<void>[]>([]);
+  const failedIds = useRef<Set<string>>(new Set());
+  const pendingWriteErrors = useRef<ImportError[]>([]);
 
   // Batch buffer: accumulates files during processing; flushed all at once on reviewing.
   const filesBuf = useRef<STLFile[]>([]);
@@ -77,7 +85,12 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
   async function awaitPendingWrites() {
     while (pendingWrites.current.length > 0) {
       const batch = pendingWrites.current.splice(0);
-      await Promise.all(batch);
+      const results = await Promise.allSettled(batch);
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          pendingWriteErrors.current.push(toImportError('Unknown file', result.reason));
+        }
+      }
     }
   }
 
@@ -89,11 +102,17 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
         if (cancelRef.current) return;
         // savePendingFile returns the canonical DB id, which may differ from entry.id
         // when re-importing a directory whose files already exist in the DB.
-        const writePromise = savePendingFile(entry).then((canonicalId) => {
-          if (canonicalId && canonicalId !== entry.id) {
+        const writePromise = savePendingFile(entry)
+          .then((canonicalId) => {
+            if (!canonicalId) throw new Error('savePendingFile returned an empty id');
             idMap.current.set(entry.id, canonicalId);
-          }
-        });
+          })
+          .catch((err) => {
+            failedIds.current.add(entry.id);
+            const writeErr = toImportError(entry.name, err);
+            pendingWriteErrors.current.push(writeErr);
+            console.error(`Failed to stage ${entry.name}:`, writeErr.err);
+          });
         pendingWrites.current.push(writePromise);
         // Accumulate in ref only — set into state all at once when transitioning to reviewing
         filesBuf.current.push(entry);
@@ -109,7 +128,7 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
         if (cancelRef.current) return;
         console.error(`Failed to process ${name}:`, err);
         stateUpdateBuf.current.processedDelta += 1;
-        stateUpdateBuf.current.newErrors.push({ name, err: err as Error });
+        stateUpdateBuf.current.newErrors.push(toImportError(name, err));
         stateUpdateBuf.current.currentName = name;
         scheduleStateFlush();
       },
@@ -120,6 +139,7 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
   /** Shared post-processing: drain buffers, transition through finalizing → reviewing. */
   async function finishImport() {
     disposeRenderer();
+    if (cancelRef.current) return;
 
     // Drain any remaining rAF-buffered progress into the finalizing transition
     const { processedDelta, newErrors } = drainStateUpdate();
@@ -133,23 +153,27 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
 
     // Await all DB writes so idMap is fully populated with canonical IDs
     await awaitPendingWrites();
+    if (cancelRef.current) return;
 
     // Set all accumulated files at once — zero renders during processing phase
-    const allFiles = filesBuf.current.splice(0);
+    const allFiles = filesBuf.current.splice(0).filter((f) => !failedIds.current.has(f.id));
+    const writeErrors = pendingWriteErrors.current.splice(0);
 
-    // Rewrite any STLFile.id values that differ from the canonical DB ids
-    if (idMap.current.size > 0) {
-      const map = idMap.current;
-      const canonicalFiles = allFiles.map((f) => {
-        const canonical = map.get(f.id);
-        return canonical ? { ...f, id: canonical } : f;
-      });
-      setImportState((prev) => ({ ...prev, status: 'reviewing', files: canonicalFiles }));
-    } else {
-      setImportState((prev) => ({ ...prev, status: 'reviewing', files: allFiles }));
-    }
+    // Rewrite each STLFile.id to the canonical DB id when needed.
+    const map = idMap.current;
+    const canonicalFiles = allFiles.map((f) => {
+      const canonical = map.get(f.id);
+      return canonical ? { ...f, id: canonical } : f;
+    });
+    setImportState((prev) => ({
+      ...prev,
+      status: 'reviewing',
+      files: canonicalFiles,
+      errors: writeErrors.length > 0 ? [...prev.errors, ...writeErrors] : prev.errors,
+    }));
 
     idMap.current.clear();
+    failedIds.current.clear();
   }
 
   const handleOpenFolder = async () => {
@@ -176,11 +200,14 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
     filesBuf.current = [];
     pendingWrites.current = [];
     idMap.current.clear();
+    failedIds.current.clear();
+    pendingWriteErrors.current = [];
     stateUpdateBuf.current = { processedDelta: 0, currentName: null, newErrors: [] };
     setImportState({ status: 'processing', files: [], processed: 0, total: fileInfos.length, currentName: null, errors: [] });
     cancelRef.current = false;
 
     await processFiles(fileInfos, makeCallbacks(canonicalDir.id));
+    if (cancelRef.current) return;
     await finishImport();
   };
 
@@ -199,11 +226,14 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
     filesBuf.current = [];
     pendingWrites.current = [];
     idMap.current.clear();
+    failedIds.current.clear();
+    pendingWriteErrors.current = [];
     stateUpdateBuf.current = { processedDelta: 0, currentName: null, newErrors: [] };
     setImportState({ status: 'processing', files: [], processed: 0, total: fileInfos.length, currentName: null, errors: [] });
     cancelRef.current = false;
 
     await processFiles(fileInfos, makeCallbacks());
+    if (cancelRef.current) return;
     await finishImport();
   };
 
@@ -236,8 +266,12 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
     // Scope the delete to only this session's canonical DB ids to avoid
     // accidentally removing rows from a concurrent import session.
     const sessionIds = Array.from(idMap.current.values());
-    await cancelPendingFiles(sessionIds.length > 0 ? sessionIds : undefined);
+    if (sessionIds.length > 0) await cancelPendingFiles(sessionIds);
+    filesBuf.current = [];
+    pendingWrites.current = [];
+    pendingWriteErrors.current = [];
     idMap.current.clear();
+    failedIds.current.clear();
     setImportState(INITIAL_STATE);
   };
 
