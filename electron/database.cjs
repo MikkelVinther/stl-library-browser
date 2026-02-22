@@ -217,16 +217,22 @@ function saveFileCategoryValues(fileId, categories) {
   }
 }
 
-/** Internal: write a file row with the given import_status */
+/**
+ * Internal: write a file row with the given import_status.
+ * Returns the effective DB id (may differ from data.id on re-import upsert).
+ */
 function saveFileWithStatus(data, status) {
   const db = getDB();
   const metadataJson = data.metadata ? JSON.stringify(data.metadata) : null;
+
+  let effectiveId;
 
   if (status === 'pending') {
     // For pending writes: if a confirmed file with the same path already exists,
     // update geometry/metadata but preserve import_status = 'confirmed' so
     // re-scanning doesn't downgrade user-confirmed files back to pending.
-    db.prepare(`
+    // RETURNING id gives us the canonical row id even when the upsert resolves a conflict.
+    const row = db.prepare(`
       INSERT INTO files
         (id, directory_id, relative_path, name, original_filename, full_path,
          size_bytes, size_display, thumbnail, import_status, imported_at, last_modified, metadata_json)
@@ -244,7 +250,8 @@ function saveFileWithStatus(data, status) {
           WHEN import_status = 'confirmed' THEN 'confirmed'
           ELSE excluded.import_status
         END
-    `).run(
+      RETURNING id
+    `).get(
       data.id, data.directoryId || null, data.relativePath || '', data.name,
       data.metadata?.originalFilename || data.name, data.fullPath || null,
       data.sizeBytes || 0, data.size || '0 MB',
@@ -252,6 +259,7 @@ function saveFileWithStatus(data, status) {
       data.metadata?.importedAt || Date.now(),
       data.lastModified || null, metadataJson
     );
+    effectiveId = row.id;
   } else {
     // For confirmed/direct saves: full replace is acceptable
     db.prepare(`
@@ -267,10 +275,14 @@ function saveFileWithStatus(data, status) {
       data.metadata?.importedAt || Date.now(),
       data.lastModified || null, metadataJson
     );
+    effectiveId = data.id;
   }
 
-  if (data.tags) saveFileTags(data.id, data.tags);
-  if (data.categories) saveFileCategoryValues(data.id, data.categories);
+  // Use effectiveId for FK-linked tables so tags/categories reference the canonical row
+  if (data.tags) saveFileTags(effectiveId, data.tags);
+  if (data.categories) saveFileCategoryValues(effectiveId, data.categories);
+
+  return effectiveId;
 }
 
 // ── CRUD exports ──────────────────────────────────────────────────────────────
@@ -285,6 +297,7 @@ exports.getAllFiles = () => {
 
 exports.saveFile = (data) => saveFileWithStatus(data, 'confirmed');
 
+/** Writes a pending file and returns the canonical DB id for this row. */
 exports.savePendingFile = (data) => saveFileWithStatus(data, 'pending');
 
 exports.updateFile = (id, updates) => {
@@ -316,9 +329,21 @@ exports.confirmPendingFiles = (ids) => {
   db.transaction(() => { for (const id of ids) stmt.run(id); })();
 };
 
-exports.cancelPendingFiles = () => {
+/**
+ * Delete pending files. When sessionIds is provided, only deletes rows whose id is in
+ * that list — preventing accidental deletion of another concurrent import session's data.
+ * Falls back to deleting all pending rows if no sessionIds are supplied.
+ */
+exports.cancelPendingFiles = (sessionIds) => {
   const db = getDB();
-  db.prepare("DELETE FROM files WHERE import_status = 'pending'").run();
+  if (sessionIds && sessionIds.length > 0) {
+    const placeholders = sessionIds.map(() => '?').join(', ');
+    db.prepare(
+      `DELETE FROM files WHERE import_status = 'pending' AND id IN (${placeholders})`
+    ).run(...sessionIds);
+  } else {
+    db.prepare("DELETE FROM files WHERE import_status = 'pending'").run();
+  }
 };
 
 // ── Category-specific CRUD ────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react';
 import { Box, Sun, Moon } from 'lucide-react';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import ImportProgress from './components/ImportProgress';
@@ -48,14 +49,20 @@ export default function App() {
     tagsChanged, categoriesChanged,
   } = useFileDetail({ updateFileInList });
 
-  const filterSidebarProps = {
+  const onImportFiles = useCallback(() => fileInputRef.current?.click(), [fileInputRef]);
+
+  const filterSidebarProps = useMemo(() => ({
     searchTerm, onSearchChange: setSearchTerm,
     categoryFacets, selectedCategories, onToggleCategoryValue: toggleCategoryValue,
     allTags, selectedTags, onToggleTag: toggleTag,
     activeFilterCount, onClearFilters: clearFilters,
-    onImportFiles: () => fileInputRef.current?.click(),
+    onImportFiles,
     onOpenFolder: handleOpenFolder,
-  };
+  }), [
+    searchTerm, setSearchTerm, categoryFacets, selectedCategories, toggleCategoryValue,
+    allTags, selectedTags, toggleTag, activeFilterCount, clearFilters,
+    onImportFiles, handleOpenFolder,
+  ]);
 
   return (
     <div className="app-shell" {...dragHandlers}>
@@ -63,24 +70,23 @@ export default function App() {
 
       <DragOverlay isDragging={isDragging} />
 
-      {importState.status === 'processing' && (
+      {(importState.status === 'processing' || importState.status === 'finalizing') && (
         <ImportProgress
           processed={importState.processed}
           total={importState.total}
           currentName={importState.currentName}
           errors={importState.errors.length}
-          isComplete={false}
+          isFinalizing={importState.status === 'finalizing'}
           onCancel={cancelImport}
-          onOpenReview={() => {}}
         />
       )}
 
-      {(importState.status === 'processing' || importState.status === 'reviewing') && (
+      {importState.status === 'reviewing' && (
         <ImportReviewPanel
           files={importState.files}
           onConfirm={confirmImport}
           onCancel={cancelImport}
-          isProcessing={importState.status === 'processing'}
+          isProcessing={false}
           processedCount={importState.processed}
           totalCount={importState.total}
         />

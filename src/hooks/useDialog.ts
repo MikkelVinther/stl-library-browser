@@ -24,6 +24,11 @@ export function useDialog(isOpen: boolean, onClose: () => void) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
+  // Keep a stable ref to onClose so the effect never needs to re-run when
+  // the callback identity changes (e.g. when a parent re-renders during import).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -45,7 +50,7 @@ export function useDialog(isOpen: boolean, onClose: () => void) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -83,7 +88,7 @@ export function useDialog(isOpen: boolean, onClose: () => void) {
       previousFocusRef.current?.focus();
       previousFocusRef.current = null;
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]); // onClose intentionally omitted — read via onCloseRef
 
   return { dialogRef };
 }

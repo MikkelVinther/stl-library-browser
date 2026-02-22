@@ -10,9 +10,9 @@ interface ElectronDB {
   saveFile: (data: Partial<STLFile>) => Promise<void>;
   updateFile: (id: string, updates: Partial<STLFile>) => Promise<void>;
   deleteFile: (id: string) => Promise<void>;
-  savePendingFile: (data: Partial<STLFile>) => Promise<void>;
+  savePendingFile: (data: Partial<STLFile>) => Promise<string>;
   confirmPendingFiles: (ids: string[]) => Promise<void>;
-  cancelPendingFiles: () => Promise<void>;
+  cancelPendingFiles: (sessionIds?: string[]) => Promise<void>;
   getAllDirectories: () => Promise<DirectoryEntry[]>;
   saveDirectory: (data: DirectoryEntry) => Promise<DirectoryEntry>;
   deleteDirectory: (id: string) => Promise<void>;

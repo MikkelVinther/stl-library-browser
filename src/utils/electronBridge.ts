@@ -51,16 +51,18 @@ export const deleteFile = (id: string): Promise<void> => {
   try { return getAPI().db.deleteFile(id); }
   catch (e) { console.error('[electronBridge] deleteFile failed:', e); return Promise.resolve(); }
 };
-export const savePendingFile = (data: Partial<STLFile>): Promise<void> => {
+/** Returns the canonical DB id for the saved row (may differ from data.id on re-import). */
+export const savePendingFile = (data: Partial<STLFile>): Promise<string> => {
   try { return getAPI().db.savePendingFile(data); }
-  catch (e) { console.error('[electronBridge] savePendingFile failed:', e); return Promise.resolve(); }
+  catch (e) { console.error('[electronBridge] savePendingFile failed:', e); return Promise.resolve(data.id ?? ''); }
 };
 export const confirmPendingFiles = (ids: string[]): Promise<void> => {
   try { return getAPI().db.confirmPendingFiles(ids); }
   catch (e) { console.error('[electronBridge] confirmPendingFiles failed:', e); return Promise.resolve(); }
 };
-export const cancelPendingFiles = (): Promise<void> => {
-  try { return getAPI().db.cancelPendingFiles(); }
+/** Delete pending files. Pass sessionIds to scope the delete to this import session only. */
+export const cancelPendingFiles = (sessionIds?: string[]): Promise<void> => {
+  try { return getAPI().db.cancelPendingFiles(sessionIds); }
   catch (e) { console.error('[electronBridge] cancelPendingFiles failed:', e); return Promise.resolve(); }
 };
 export const getAllDirectories = (): Promise<DirectoryEntry[]> => {

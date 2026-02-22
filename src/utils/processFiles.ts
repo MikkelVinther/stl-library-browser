@@ -16,6 +16,10 @@ interface ProcessCallbacks {
   directoryId?: string;
 }
 
+// Yield to the main thread every N files instead of every single file.
+// Per-file setTimeout(0) adds ~4ms of timer overhead each; chunked yielding amortises this.
+const YIELD_CHUNK = 5;
+
 /**
  * Process an array of file info objects from the main-process directory scan.
  * Reads each file via IPC, generates thumbnail + metadata, then disposes geometry.
@@ -28,11 +32,16 @@ export async function processFiles(fileInfos: FileInfo[], {
   const loader = new STLLoader();
   let processed = 0;
 
+  // Hoist settings read out of the per-file loop (avoids repeated localStorage access)
+  const settings = getPrintSettings();
+
   for (const fileInfo of fileInfos) {
     if (shouldCancel?.()) break;
 
-    // Yield to main thread between files
-    await new Promise((r) => setTimeout(r, 0));
+    // Yield to main thread every YIELD_CHUNK files to keep the UI responsive
+    if (processed % YIELD_CHUNK === 0) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
 
     const fileName = fileInfo.relativePath.split('/').pop() ?? fileInfo.relativePath;
 
@@ -48,7 +57,9 @@ export async function processFiles(fileInfos: FileInfo[], {
         throw new Error('No file path or browser file available');
       }
       const geometry = loader.parse(arrayBuffer);
-      geometry.computeVertexNormals();
+      // computeVertexNormals is not needed here:
+      // - analyzeGeometry uses only position/index/boundingBox
+      // - prepareScene (inside renderThumbnail) calls it on a clone
 
       const thumbnail = renderThumbnail(geometry);
       const geoStats = analyzeGeometry(geometry);
@@ -57,7 +68,6 @@ export async function processFiles(fileInfos: FileInfo[], {
 
       geometry.dispose(); // Free immediately — only needed for thumbnail + analysis
 
-      const settings = getPrintSettings();
       const estimatedGrams = estimateWeight(geoStats.volume, settings);
       const volumeCm3 = geoStats.volume != null ? +(geoStats.volume / 1000).toFixed(2) : null;
 

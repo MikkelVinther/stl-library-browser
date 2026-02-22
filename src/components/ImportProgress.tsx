@@ -6,19 +6,19 @@ interface ImportProgressProps {
   total: number;
   currentName: string | null;
   errors: number;
-  isComplete: boolean;
+  /** True while awaiting final DB writes before the review panel opens. */
+  isFinalizing: boolean;
   onCancel: () => void;
-  onOpenReview: () => void;
 }
 
-export default function ImportProgress({ processed, total, currentName, errors, isComplete, onCancel, onOpenReview }: ImportProgressProps) {
+export default function ImportProgress({ processed, total, currentName, errors, isFinalizing, onCancel }: ImportProgressProps) {
   const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 surface-panel border-x-0 rounded-t-2xl px-6 py-3">
       <div className="max-w-4xl mx-auto flex items-center gap-4">
         {/* Icon */}
-        {isComplete ? (
+        {isFinalizing ? (
           <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
         ) : (
           <Loader2 className="w-5 h-5 text-blue-400 flex-shrink-0 animate-spin" />
@@ -28,9 +28,9 @@ export default function ImportProgress({ processed, total, currentName, errors, 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <p className="text-sm text-slate-100 truncate">
-              {isComplete
-                ? `Done — ${processed} file${processed !== 1 ? 's' : ''} processed`
-                : `Processing ${currentName || '...'} (${processed} of ${total})`}
+              {isFinalizing
+                ? 'Saving to library\u2026'
+                : `Processing ${currentName || '\u2026'} (${processed} of ${total})`}
             </p>
             <span className="text-xs text-soft ml-2 flex-shrink-0">
               {processed} processed{errors > 0 && `, ${errors} error${errors !== 1 ? 's' : ''}`}
@@ -40,21 +40,14 @@ export default function ImportProgress({ processed, total, currentName, errors, 
           {/* Progress bar */}
           <div className="w-full bg-[rgba(11,20,34,0.8)] rounded-full h-1.5 overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-300 ${isComplete ? 'bg-emerald-500' : 'bg-blue-500'}`}
+              className={`h-full rounded-full transition-all duration-300 ${isFinalizing ? 'bg-emerald-500' : 'bg-blue-500'}`}
               style={{ width: `${pct}%` }}
             />
           </div>
         </div>
 
-        {/* Actions */}
-        {isComplete ? (
-          <button
-            onClick={onOpenReview}
-            className="ui-btn ui-btn-primary px-4 py-1.5 text-xs font-semibold flex-shrink-0"
-          >
-            Review
-          </button>
-        ) : (
+        {/* Cancel button — hidden while finalizing */}
+        {!isFinalizing && (
           <button
             onClick={onCancel}
             className="ui-btn ui-btn-secondary p-1.5 flex-shrink-0"

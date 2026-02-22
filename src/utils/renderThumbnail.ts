@@ -2,7 +2,11 @@ import * as THREE from 'three';
 import type { BufferGeometry, WebGLRenderer } from 'three';
 import { prepareScene, addStandardLighting, disposePreparedScene } from './threeSceneSetup';
 
-const SIZE = 400;
+// 256px thumbnails are sufficient for the card grid and detail modal.
+// JPEG at q=0.85 is typically 5-15x smaller than PNG at this resolution,
+// significantly reducing SQLite storage and memory usage per import batch.
+const SIZE = 256;
+const JPEG_QUALITY = 0.85;
 let renderer: WebGLRenderer | null = null;
 
 function getRenderer(): WebGLRenderer {
@@ -34,7 +38,7 @@ export function renderThumbnail(geometry: BufferGeometry): string {
   addStandardLighting(scene, dist);
 
   gl.render(scene, camera);
-  const dataUrl = gl.domElement.toDataURL('image/png');
+  const dataUrl = gl.domElement.toDataURL('image/jpeg', JPEG_QUALITY);
 
   disposePreparedScene(rest);
   return dataUrl;

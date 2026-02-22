@@ -85,7 +85,7 @@ export interface ImportError {
 }
 
 export interface ImportState {
-  status: 'idle' | 'scanning' | 'processing' | 'reviewing';
+  status: 'idle' | 'scanning' | 'processing' | 'finalizing' | 'reviewing';
   /** Files processed so far; grows during import */
   files: STLFile[];
   processed: number;
