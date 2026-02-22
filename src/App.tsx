@@ -86,9 +86,6 @@ export default function App() {
           files={importState.files}
           onConfirm={confirmImport}
           onCancel={cancelImport}
-          isProcessing={false}
-          processedCount={importState.processed}
-          totalCount={importState.total}
         />
       )}
 

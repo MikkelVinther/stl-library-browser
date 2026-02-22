@@ -36,9 +36,8 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
   const idMap = useRef<Map<string, string>>(new Map());
   const pendingWrites = useRef<Promise<void>[]>([]);
 
-  // Batch buffer: avoids O(n²) spread on every file. Flushed every 50ms.
+  // Batch buffer: accumulates files during processing; flushed all at once on reviewing.
   const filesBuf = useRef<STLFile[]>([]);
-  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // rAF-batched progress state: coalesces processed/currentName/errors updates per frame.
   const stateUpdateBuf = useRef<{ processedDelta: number; currentName: string | null; newErrors: ImportError[] }>({
@@ -47,17 +46,6 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
     newErrors: [],
   });
   const rafHandle = useRef<number | null>(null);
-
-  function flushBuf() {
-    const batch = filesBuf.current.splice(0);
-    if (batch.length === 0) return;
-    setImportState((prev) => ({ ...prev, files: [...prev.files, ...batch] }));
-  }
-
-  function flushAll() {
-    if (flushTimer.current) { clearTimeout(flushTimer.current); flushTimer.current = null; }
-    flushBuf();
-  }
 
   /** Flush accumulated progress updates synchronously (called before state transitions). */
   function drainStateUpdate() {
@@ -107,10 +95,8 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
           }
         });
         pendingWrites.current.push(writePromise);
-        // Accumulate files in a ref; flush to state every 50ms to avoid O(n²)
+        // Accumulate in ref only — set into state all at once when transitioning to reviewing
         filesBuf.current.push(entry);
-        if (flushTimer.current) clearTimeout(flushTimer.current);
-        flushTimer.current = setTimeout(flushBuf, 50);
         // Batch processed/currentName into a single rAF update per frame
         stateUpdateBuf.current.processedDelta += 1;
         stateUpdateBuf.current.currentName = entry.name;
@@ -133,7 +119,6 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
 
   /** Shared post-processing: drain buffers, transition through finalizing → reviewing. */
   async function finishImport() {
-    flushAll();
     disposeRenderer();
 
     // Drain any remaining rAF-buffered progress into the finalizing transition
@@ -149,19 +134,19 @@ export function useImport({ addFiles, setDirectories }: UseImportParams) {
     // Await all DB writes so idMap is fully populated with canonical IDs
     await awaitPendingWrites();
 
+    // Set all accumulated files at once — zero renders during processing phase
+    const allFiles = filesBuf.current.splice(0);
+
     // Rewrite any STLFile.id values that differ from the canonical DB ids
     if (idMap.current.size > 0) {
       const map = idMap.current;
-      setImportState((prev) => ({
-        ...prev,
-        status: 'reviewing',
-        files: prev.files.map((f) => {
-          const canonical = map.get(f.id);
-          return canonical ? { ...f, id: canonical } : f;
-        }),
-      }));
+      const canonicalFiles = allFiles.map((f) => {
+        const canonical = map.get(f.id);
+        return canonical ? { ...f, id: canonical } : f;
+      });
+      setImportState((prev) => ({ ...prev, status: 'reviewing', files: canonicalFiles }));
     } else {
-      setImportState((prev) => ({ ...prev, status: 'reviewing' }));
+      setImportState((prev) => ({ ...prev, status: 'reviewing', files: allFiles }));
     }
 
     idMap.current.clear();

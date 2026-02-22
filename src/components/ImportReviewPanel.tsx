@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useDialog } from '../hooks/useDialog';
-import { X, Check, Loader2, ChevronDown, ChevronRight, Pencil, Plus } from 'lucide-react';
+import { X, Check, ChevronDown, ChevronRight, Pencil, Plus } from 'lucide-react';
 import { CATEGORY_IDS, CATEGORY_LABELS } from '../utils/categoryClassifier';
 import type { STLFile } from '../types/index';
 
@@ -10,18 +10,12 @@ interface ImportReviewPanelProps {
   files: STLFile[];
   onConfirm: (files: STLFile[]) => void;
   onCancel: () => void;
-  isProcessing?: boolean;
-  processedCount?: number;
-  totalCount?: number;
 }
 
 export default function ImportReviewPanel({
   files,
   onConfirm,
   onCancel,
-  isProcessing = false,
-  processedCount = 0,
-  totalCount = 0,
 }: ImportReviewPanelProps) {
   const [editedFiles, setEditedFiles] = useState<STLFile[]>(() => [...files]);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
@@ -31,16 +25,6 @@ export default function ImportReviewPanel({
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [newValueInput, setNewValueInput] = useState('');
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
-  const prevLenRef = useRef(files.length);
-
-  // Append new files as they arrive from the streaming pipeline
-  useEffect(() => {
-    if (files.length > prevLenRef.current) {
-      const newFiles = files.slice(prevLenRef.current);
-      setEditedFiles((prev) => [...prev, ...newFiles]);
-    }
-    prevLenRef.current = files.length;
-  }, [files.length]);
 
   // Build category summary
   const categorySummary = useMemo(() => {
@@ -132,9 +116,7 @@ export default function ImportReviewPanel({
 
   const { dialogRef } = useDialog(true, onCancel);
 
-  const headerText = isProcessing
-    ? `Importing... (${processedCount} of ${totalCount})`
-    : `Import ${editedFiles.length} file${editedFiles.length !== 1 ? 's' : ''}`;
+  const headerText = `Import ${editedFiles.length} file${editedFiles.length !== 1 ? 's' : ''}`;
 
   const expandedFiles = expandedCategory && expandedValue
     ? categorySummary
@@ -168,7 +150,6 @@ export default function ImportReviewPanel({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(146,173,220,0.2)]">
           <div className="flex items-center gap-3">
-            {isProcessing && <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />}
             <h2 className="text-lg font-bold brand-title">{headerText}</h2>
           </div>
           <button onClick={onCancel} className="p-1.5 ui-btn ui-btn-ghost">
@@ -420,10 +401,9 @@ export default function ImportReviewPanel({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={isProcessing}
-                className="ui-btn ui-btn-primary px-6 py-2.5 disabled:bg-[rgba(25,40,66,0.8)] disabled:text-faint text-sm font-semibold rounded-lg transition-colors"
+                className="ui-btn ui-btn-primary px-6 py-2.5 text-sm font-semibold rounded-lg transition-colors"
               >
-                {isProcessing ? 'Processing...' : 'Import All'}
+                Import All
               </button>
             </div>
           </div>
