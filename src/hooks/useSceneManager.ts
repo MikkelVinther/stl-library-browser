@@ -2,10 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { getAllScenes, getScene, saveScene, deleteScene as deleteSceneDB } from '../utils/electronBridge';
 import type { SceneMeta, SceneState, SceneObject, SceneObjectData } from '../types/scene';
 
+export interface InitialFile {
+  id: string;
+  name: string;
+  fullPath: string | null;
+  thumbnail: string | null;
+}
+
 export interface UseSceneManagerReturn {
   scenes: SceneMeta[];
   activeScene: SceneState | null;
-  createScene: (name: string, initialFileIds?: string[]) => Promise<void>;
+  createScene: (name: string, initialFiles?: InitialFile[]) => Promise<void>;
   openScene: (id: string) => Promise<void>;
   closeScene: (disposeGeometries?: () => void) => void;
   deleteScene: (id: string) => Promise<void>;
@@ -37,25 +44,25 @@ export function useSceneManager(): UseSceneManagerReturn {
     getAllScenes().then(setScenes);
   }, []);
 
-  const createScene = useCallback(async (name: string, initialFileIds?: string[]) => {
+  const createScene = useCallback(async (name: string, initialFiles?: InitialFile[]) => {
     const meta = makeMeta(name);
     await saveScene(meta);
     const freshMeta = { ...meta };
     setScenes((prev) => [freshMeta, ...prev]);
 
-    // Build initial objects from fileIds — geometry loads later in useSceneObjects
-    const objects: SceneObject[] = (initialFileIds ?? []).map((fileId, idx) => ({
+    // Build initial objects with full file info so geometry can load
+    const objects: SceneObject[] = (initialFiles ?? []).map((file, idx) => ({
       id: crypto.randomUUID(),
       sceneId: meta.id,
-      fileId,
+      fileId: file.id,
       position: [0, 0, 0],
       rotationY: 0,
       scale: [1, 1, 1],
       color: null,
       sortOrder: idx,
-      fileName: '',
-      fileFullPath: null,
-      fileThumbnail: null,
+      fileName: file.name,
+      fileFullPath: file.fullPath,
+      fileThumbnail: file.thumbnail,
       geometry: null,
       loadStatus: 'pending',
     }));

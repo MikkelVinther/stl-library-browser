@@ -58,7 +58,9 @@ export default function App() {
 
   const handleNewScene = useCallback((selectedFiles: STLFile[]) => {
     const validFiles = selectedFiles.filter((f) => f.fullPath !== null);
-    createScene('New Scene', validFiles.map((f) => f.id));
+    createScene('New Scene', validFiles.map((f) => ({
+      id: f.id, name: f.name, fullPath: f.fullPath, thumbnail: f.thumbnail,
+    })));
   }, [createScene]);
 
   const filterSidebarProps = useMemo(() => ({

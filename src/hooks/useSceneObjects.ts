@@ -80,9 +80,20 @@ export function useSceneObjects(): UseSceneObjectsReturn {
       const buffer = await readFile(filePath);
       if (!buffer) throw new Error(`readFile returned null for ${filePath}`);
       const loader = new STLLoader();
-      const geo = loader.parse(buffer);
+      // Electron IPC returns a Node.js Buffer; extract the underlying ArrayBuffer
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geo = loader.parse((buffer as any).buffer ?? buffer);
       geo.computeVertexNormals();
-      geo.rotateX(-Math.PI / 2);
+      geo.rotateX(-Math.PI / 2); // Z-up (STL) → Y-up (Three.js)
+
+      // Center X/Z so the gizmo appears at the visual horizontal center.
+      // Set Y so the model's bottom face sits at y=0 (ground plane).
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox!;
+      const cx = (bb.max.x + bb.min.x) / 2;
+      const cz = (bb.max.z + bb.min.z) / 2;
+      geo.translate(-cx, -bb.min.y, -cz);
+
       return geo;
     });
 

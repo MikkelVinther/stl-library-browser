@@ -17,7 +17,7 @@ interface SceneBuilderProps {
 
 export default function SceneBuilder({ sceneState, setSceneState, allFiles, onClose }: SceneBuilderProps) {
   const { addObject, removeObject, duplicateObject, updateTransform, selectObject, loadGeometryForObject, disposeAll } = useSceneObjects();
-  const { toggleGrid } = useGridSnap();
+  const { toggleGrid, setGridSize } = useGridSnap();
   const { isSaving, triggerSave, manualSave, markClean } = useScenePersistence();
   const [showExitPrompt, setShowExitPrompt] = useState(false);
 
@@ -63,6 +63,10 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
   const handleToggleGrid = useCallback(() => {
     toggleGrid(setSceneState);
   }, [toggleGrid, setSceneState]);
+
+  const handleSetGridSize = useCallback((size: number) => {
+    setGridSize(size, setSceneState);
+  }, [setGridSize, setSceneState]);
 
   const handleRename = useCallback((name: string) => {
     setSceneState((prev) => prev ? {
@@ -156,6 +160,7 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
         onBack={handleBack}
         onSave={handleSave}
         onToggleGrid={handleToggleGrid}
+        onSetGridSize={handleSetGridSize}
         onSetTransformMode={handleSetTransformMode}
         onRename={handleRename}
       />

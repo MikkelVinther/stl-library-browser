@@ -1,7 +1,7 @@
 import { memo, useRef, useEffect } from 'react';
-import type { Mesh } from 'three';
+import { TransformControls } from '@react-three/drei';
+import * as THREE from 'three';
 import type { SceneObject } from '../../types/scene';
-import { TransformGizmo } from './TransformGizmo';
 
 interface SceneObject3DProps {
   obj: SceneObject;
@@ -30,7 +30,8 @@ export const SceneObject3D = memo(function SceneObject3D({
   onLoadGeometry,
   onTransformCommit,
 }: SceneObject3DProps) {
-  const meshRef = useRef<Mesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  const isDragging = useRef(false);
 
   // Trigger geometry load on mount if not yet loaded
   useEffect(() => {
@@ -39,48 +40,60 @@ export const SceneObject3D = memo(function SceneObject3D({
     }
   }, [obj.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sync group transform from state when not being dragged by the gizmo
+  useEffect(() => {
+    const g = groupRef.current;
+    if (!g || isDragging.current) return;
+    g.position.set(...obj.position);
+    g.rotation.set(0, obj.rotationY, 0);
+    g.scale.set(...obj.scale);
+  });
+
   const handleClick = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     onSelect(obj.id);
   };
 
-  const color = isSelected ? SELECTED_COLOR : (obj.color ?? DEFAULT_COLOR);
+  const handleMouseDown = () => { isDragging.current = true; };
 
-  if (!obj.geometry || obj.loadStatus !== 'loaded') {
-    return (
-      <mesh
-        position={obj.position}
-        rotation={[0, obj.rotationY, 0]}
-        scale={obj.scale}
-        onClick={handleClick}
-      >
-        <boxGeometry args={[25, 25, 25]} />
-        <meshStandardMaterial color={color} wireframe opacity={0.4} transparent />
-      </mesh>
-    );
-  }
+  const handleMouseUp = () => {
+    const g = groupRef.current;
+    if (!g) return;
+    isDragging.current = false;
+    onTransformCommit(obj.id, {
+      position: [g.position.x, g.position.y, g.position.z],
+      rotationY: g.rotation.y,
+      scale: [g.scale.x, g.scale.y, g.scale.z],
+    });
+  };
+
+  const color = isSelected ? SELECTED_COLOR : (obj.color ?? DEFAULT_COLOR);
+  const isLoaded = obj.geometry && obj.loadStatus === 'loaded';
 
   return (
     <>
-      <mesh
-        ref={meshRef}
-        geometry={obj.geometry}
-        position={obj.position}
-        rotation={[0, obj.rotationY, 0]}
-        scale={obj.scale}
-        onClick={handleClick}
-      >
-        <meshStandardMaterial color={color} metalness={0.3} roughness={0.55} />
-      </mesh>
+      <group ref={groupRef}>
+        {isLoaded ? (
+          <mesh geometry={obj.geometry!} onClick={handleClick}>
+            <meshStandardMaterial color={color} metalness={0.3} roughness={0.55} />
+          </mesh>
+        ) : (
+          <mesh onClick={handleClick}>
+            <boxGeometry args={[25, 25, 25]} />
+            <meshStandardMaterial color={color} wireframe opacity={0.4} transparent />
+          </mesh>
+        )}
+      </group>
 
-      {isSelected && (
-        <TransformGizmo
-          meshRef={meshRef}
-          object={obj}
+      {isSelected && groupRef.current && (
+        <TransformControls
+          object={groupRef.current}
           mode={transformMode}
-          gridEnabled={gridEnabled}
-          gridSize={gridSize}
-          onCommit={onTransformCommit}
+          translationSnap={gridEnabled ? gridSize : null}
+          rotationSnap={gridEnabled ? Math.PI / 12 : null}
+          scaleSnap={null}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
         />
       )}
     </>
