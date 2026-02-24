@@ -28,7 +28,7 @@ export default function App() {
     addFiles, updateFileInList, bulkAddTags, bulkSetCategory,
   } = useLibrary();
 
-  const { scenes, activeScene, createScene, openScene, closeScene, deleteScene, setActiveScene } = useSceneManager();
+  const { scenes, activeScene, createScene, openScene, closeScene, deleteScene, setActiveScene, refreshScenes } = useSceneManager();
 
   const {
     searchTerm, setSearchTerm, selectedTags, selectedCategories,
@@ -87,6 +87,7 @@ export default function App() {
         setSceneState={setActiveScene}
         allFiles={files}
         onClose={closeScene}
+        onRefreshScenes={refreshScenes}
       />
     );
   }

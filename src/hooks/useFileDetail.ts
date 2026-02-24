@@ -3,6 +3,7 @@ import type { STLFile, ViewerState, CategoryValues, PrintSettings } from '../typ
 import { updateFile, readFile } from '../utils/electronBridge';
 import { estimateWeight } from '../utils/printEstimate';
 import { loadSTLLoader } from '../utils/loadSTLLoader';
+import { toArrayBuffer } from '../utils/bufferUtils';
 
 interface UseFileDetailParams {
   updateFileInList: (id: string, updates: Partial<STLFile>) => void;
@@ -42,8 +43,7 @@ export function useFileDetail({ updateFileInList }: UseFileDetailParams) {
       if (!buffer) { setViewerState({ status: 'error', geometry: null }); return; }
       const { STLLoader } = await loadSTLLoader();
       const loader = new STLLoader();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const geometry = loader.parse((buffer as any).buffer ?? buffer);
+      const geometry = loader.parse(toArrayBuffer(buffer));
       geometry.computeVertexNormals();
       setViewerState({ status: 'loaded', geometry });
     } catch {

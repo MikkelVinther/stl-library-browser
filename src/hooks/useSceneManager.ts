@@ -17,6 +17,7 @@ export interface UseSceneManagerReturn {
   closeScene: (disposeGeometries?: () => void) => void;
   deleteScene: (id: string) => Promise<void>;
   setActiveScene: React.Dispatch<React.SetStateAction<SceneState | null>>;
+  refreshScenes: () => Promise<void>;
 }
 
 function makeMeta(name: string): SceneMeta {
@@ -72,7 +73,9 @@ export function useSceneManager(): UseSceneManagerReturn {
       objects,
       selectedObjectId: null,
       transformMode: 'translate',
-      isDirty: objects.length > 0,
+      changeVersion: objects.length > 0 ? 1 : 0,
+      savedVersion: 0,
+      lastSaveError: null,
     });
   }, []);
 
@@ -85,7 +88,9 @@ export function useSceneManager(): UseSceneManagerReturn {
       objects: rawObjects.map(objectDataToSceneObject),
       selectedObjectId: null,
       transformMode: 'translate',
-      isDirty: false,
+      changeVersion: 0,
+      savedVersion: 0,
+      lastSaveError: null,
     });
   }, []);
 
@@ -100,5 +105,10 @@ export function useSceneManager(): UseSceneManagerReturn {
     setActiveScene((prev) => (prev?.meta.id === id ? null : prev));
   }, []);
 
-  return { scenes, activeScene, createScene, openScene, closeScene, deleteScene, setActiveScene };
+  const refreshScenes = useCallback(async () => {
+    const updated = await getAllScenes();
+    setScenes(updated);
+  }, []);
+
+  return { scenes, activeScene, createScene, openScene, closeScene, deleteScene, setActiveScene, refreshScenes };
 }

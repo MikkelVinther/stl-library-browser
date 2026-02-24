@@ -2,6 +2,7 @@ import { useRef, useCallback } from 'react';
 import type { BufferGeometry } from 'three';
 import { loadSTLLoader } from '../utils/loadSTLLoader';
 import { readFile } from '../utils/electronBridge';
+import { toArrayBuffer } from '../utils/bufferUtils';
 import type { SceneObject, SceneState } from '../types/scene';
 
 interface CacheEntry {
@@ -80,9 +81,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
       const buffer = await readFile(filePath);
       if (!buffer) throw new Error(`readFile returned null for ${filePath}`);
       const loader = new STLLoader();
-      // Electron IPC returns a Node.js Buffer; extract the underlying ArrayBuffer
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const geo = loader.parse((buffer as any).buffer ?? buffer);
+      const geo = loader.parse(toArrayBuffer(buffer));
       geo.computeVertexNormals();
       geo.rotateX(-Math.PI / 2); // Z-up (STL) → Y-up (Three.js)
 
@@ -196,7 +195,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
       return {
         ...prev,
         objects: [...prev.objects, { ...newObj, sortOrder }],
-        isDirty: true,
+        changeVersion: prev.changeVersion + 1,
       };
     });
 
@@ -229,7 +228,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
         ...prev,
         objects: prev.objects.filter((o) => o.id !== objectId),
         selectedObjectId: prev.selectedObjectId === objectId ? null : prev.selectedObjectId,
-        isDirty: true,
+        changeVersion: prev.changeVersion + 1,
       };
     });
   }, []);
@@ -264,7 +263,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
         ...prev,
         objects: [...prev.objects, duplicate],
         selectedObjectId: newId,
-        isDirty: true,
+        changeVersion: prev.changeVersion + 1,
       };
     });
   }, []);
@@ -277,7 +276,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
     setScene((prev) => prev ? {
       ...prev,
       objects: prev.objects.map((o) => o.id === objectId ? { ...o, ...patch } : o),
-      isDirty: true,
+      changeVersion: prev.changeVersion + 1,
     } : prev);
   }, []);
 

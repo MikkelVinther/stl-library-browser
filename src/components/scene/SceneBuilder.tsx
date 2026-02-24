@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useState } from 'react';
+import { useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import type { SceneState, SceneObject } from '../../types/scene';
 import type { STLFile } from '../../types/index';
 import { SceneCanvas } from './SceneCanvas';
@@ -13,33 +13,65 @@ interface SceneBuilderProps {
   setSceneState: React.Dispatch<React.SetStateAction<SceneState | null>>;
   allFiles: STLFile[];
   onClose: (disposeGeometries?: () => void) => void;
+  onRefreshScenes: () => Promise<void>;
 }
 
-export default function SceneBuilder({ sceneState, setSceneState, allFiles, onClose }: SceneBuilderProps) {
+export default function SceneBuilder({ sceneState, setSceneState, allFiles, onClose, onRefreshScenes }: SceneBuilderProps) {
   const { addObject, removeObject, duplicateObject, updateTransform, selectObject, loadGeometryForObject, disposeAll } = useSceneObjects();
   const { toggleGrid, setGridSize } = useGridSnap();
-  const { isSaving, triggerSave, manualSave, markClean } = useScenePersistence();
+  const { isSaving, queueAutosave, saveNow } = useScenePersistence();
   const [showExitPrompt, setShowExitPrompt] = useState(false);
+  const [exitSaveError, setExitSaveError] = useState<string | null>(null);
 
-  // Autosave whenever scene becomes dirty
+  const hasUnsavedChanges = sceneState.changeVersion > sceneState.savedVersion;
+
+  // Stable ref to onRefreshScenes so the autosave callback doesn't close over stale state
+  const refreshRef = useRef(onRefreshScenes);
+  useEffect(() => { refreshRef.current = onRefreshScenes; }, [onRefreshScenes]);
+
+  // Autosave whenever changeVersion advances past savedVersion
   useEffect(() => {
-    if (sceneState.isDirty) {
-      triggerSave(sceneState);
-    }
-  }, [sceneState, triggerSave]);
+    if (!hasUnsavedChanges) return;
+    queueAutosave(sceneState, (result, savedScene) => {
+      if (result.ok) {
+        setSceneState((prev) => prev ? {
+          ...prev,
+          savedVersion: result.savedVersion,
+          meta: { ...prev.meta, updatedAt: result.updatedAt },
+          lastSaveError: null,
+        } : prev);
+        refreshRef.current();
+      } else {
+        // Only update error if the scene hasn't been closed in the meantime
+        setSceneState((prev) => prev ? { ...prev, lastSaveError: result.error } : prev);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sceneState.changeVersion]);
 
   const handleBack = useCallback(() => {
-    if (sceneState.isDirty) {
+    if (hasUnsavedChanges) {
+      setExitSaveError(null);
       setShowExitPrompt(true);
     } else {
       onClose(disposeAll);
     }
-  }, [sceneState.isDirty, onClose, disposeAll]);
+  }, [hasUnsavedChanges, onClose, disposeAll]);
 
   const handleSave = useCallback(async () => {
-    await manualSave(sceneState);
-    markClean(setSceneState);
-  }, [sceneState, manualSave, markClean, setSceneState]);
+    const result = await saveNow(sceneState);
+    if (result.ok) {
+      setSceneState((prev) => prev ? {
+        ...prev,
+        savedVersion: result.savedVersion,
+        meta: { ...prev.meta, updatedAt: result.updatedAt },
+        lastSaveError: null,
+      } : prev);
+      onRefreshScenes();
+    } else {
+      setSceneState((prev) => prev ? { ...prev, lastSaveError: result.error } : prev);
+    }
+  }, [sceneState, saveNow, setSceneState, onRefreshScenes]);
 
   const handleSelect = useCallback((id: string | null) => {
     selectObject(id, setSceneState);
@@ -72,7 +104,7 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
     setSceneState((prev) => prev ? {
       ...prev,
       meta: { ...prev.meta, name },
-      isDirty: true,
+      changeVersion: prev.changeVersion + 1,
     } : prev);
   }, [setSceneState]);
 
@@ -155,6 +187,7 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
       <SceneToolbar
         sceneState={sceneState}
         isSaving={isSaving}
+        hasUnsavedChanges={hasUnsavedChanges}
         loadingCount={loadingCount}
         totalTriangles={totalTriangles}
         onBack={handleBack}
@@ -191,24 +224,42 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
           <div className="overlay-panel rounded-2xl p-6 max-w-sm w-full mx-4 space-y-4">
             <h2 className="text-base font-semibold text-slate-100">Unsaved Changes</h2>
             <p className="text-sm text-soft">You have unsaved changes in this scene. What would you like to do?</p>
+            {exitSaveError && (
+              <p className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2 border border-red-700/40">
+                Save failed: {exitSaveError}
+              </p>
+            )}
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => setShowExitPrompt(false)}
+                onClick={() => { setShowExitPrompt(false); setExitSaveError(null); }}
                 className="ui-btn ui-btn-ghost px-4 py-2 text-sm"
               >
                 Cancel
               </button>
               <button
-                onClick={() => { setShowExitPrompt(false); onClose(disposeAll); }}
+                onClick={() => { setShowExitPrompt(false); setExitSaveError(null); onClose(disposeAll); }}
                 className="ui-btn ui-btn-secondary px-4 py-2 text-sm"
               >
                 Discard
               </button>
               <button
+                disabled={isSaving}
                 onClick={async () => {
-                  await manualSave(sceneState);
-                  setShowExitPrompt(false);
-                  onClose(disposeAll);
+                  setExitSaveError(null);
+                  const result = await saveNow(sceneState);
+                  if (result.ok) {
+                    setSceneState((prev) => prev ? {
+                      ...prev,
+                      savedVersion: result.savedVersion,
+                      meta: { ...prev.meta, updatedAt: result.updatedAt },
+                      lastSaveError: null,
+                    } : prev);
+                    await onRefreshScenes();
+                    setShowExitPrompt(false);
+                    onClose(disposeAll);
+                  } else {
+                    setExitSaveError(result.error);
+                  }
                 }}
                 className="ui-btn ui-btn-primary px-4 py-2 text-sm"
               >

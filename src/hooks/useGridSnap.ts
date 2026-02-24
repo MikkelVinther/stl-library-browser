@@ -12,7 +12,7 @@ export function useGridSnap(): UseGridSnapReturn {
     setScene((prev) => prev ? {
       ...prev,
       meta: { ...prev.meta, gridEnabled: !prev.meta.gridEnabled },
-      isDirty: true,
+      changeVersion: prev.changeVersion + 1,
     } : prev);
   }, []);
 
@@ -20,7 +20,7 @@ export function useGridSnap(): UseGridSnapReturn {
     setScene((prev) => prev ? {
       ...prev,
       meta: { ...prev.meta, gridSize: size },
-      isDirty: true,
+      changeVersion: prev.changeVersion + 1,
     } : prev);
   }, []);
 

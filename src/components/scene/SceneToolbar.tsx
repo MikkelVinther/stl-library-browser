@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Move, RotateCw, Maximize2, Grid3x3, Save, Loader2, Triangle } from 'lucide-react';
+import { ArrowLeft, Move, RotateCw, Maximize2, Grid3x3, Save, Loader2, Triangle, AlertCircle } from 'lucide-react';
 import type { SceneState } from '../../types/scene';
 
 interface SceneToolbarProps {
   sceneState: SceneState;
   isSaving: boolean;
+  hasUnsavedChanges: boolean;
   loadingCount: number;
   totalTriangles: number;
   onBack: () => void;
@@ -24,10 +25,10 @@ const GRID_PRESETS = [
 const TRIANGLE_BUDGET = 5_000_000;
 
 export function SceneToolbar({
-  sceneState, isSaving, loadingCount, totalTriangles,
+  sceneState, isSaving, hasUnsavedChanges, loadingCount, totalTriangles,
   onBack, onSave, onToggleGrid, onSetGridSize, onSetTransformMode, onRename,
 }: SceneToolbarProps) {
-  const { meta, transformMode, isDirty } = sceneState;
+  const { meta, transformMode, lastSaveError } = sceneState;
   const overBudget = totalTriangles > TRIANGLE_BUDGET;
 
   const isPreset = GRID_PRESETS.some((p) => p.value === meta.gridSize);
@@ -142,6 +143,14 @@ export function SceneToolbar({
 
       <div className="flex-1" />
 
+      {/* Save error indicator */}
+      {lastSaveError && (
+        <div className="flex items-center gap-1 text-xs text-red-400" title={lastSaveError}>
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="hidden sm:inline">Save failed</span>
+        </div>
+      )}
+
       {/* Loading indicator */}
       {loadingCount > 0 && (
         <div className="flex items-center gap-1.5 text-xs text-amber-300">
@@ -162,7 +171,7 @@ export function SceneToolbar({
         onClick={onSave}
         disabled={isSaving}
         title="Save scene"
-        className={`ui-btn px-3 py-1.5 text-xs flex items-center gap-1.5 ${isDirty ? 'ui-btn-primary' : 'ui-btn-secondary'}`}
+        className={`ui-btn px-3 py-1.5 text-xs flex items-center gap-1.5 ${hasUnsavedChanges ? 'ui-btn-primary' : 'ui-btn-secondary'}`}
       >
         {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
         Save

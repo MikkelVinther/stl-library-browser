@@ -39,7 +39,12 @@ export interface SceneState {
   objects: SceneObject[];
   selectedObjectId: string | null;
   transformMode: 'translate' | 'rotate' | 'scale';
-  isDirty: boolean;
+  /** Increments on every persisted-field mutation. */
+  changeVersion: number;
+  /** Last changeVersion successfully written to DB. */
+  savedVersion: number;
+  /** Non-null when the most recent save attempt failed. */
+  lastSaveError: string | null;
 }
 
 export type AppView = 'library' | 'scene';
