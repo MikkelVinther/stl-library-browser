@@ -1,36 +1,6 @@
 import { useRef, useCallback } from 'react';
-import type { BufferGeometry } from 'three';
-import { loadSTLLoader } from '../utils/loadSTLLoader';
-import { readFile } from '../utils/electronBridge';
-import { toArrayBuffer } from '../utils/bufferUtils';
+import { GeometryCache } from '../utils/geometryCache';
 import type { SceneObject, SceneState } from '../types/scene';
-
-interface CacheEntry {
-  promise: Promise<BufferGeometry> | null;
-  geometry: BufferGeometry | null;
-  refCount: number;
-}
-
-// Semaphore for limiting parallel geometry loads
-function makeSemaphore(concurrency: number) {
-  let running = 0;
-  const queue: Array<() => void> = [];
-  return function run<T>(fn: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const execute = () => {
-        running++;
-        fn().then(resolve, reject).finally(() => {
-          running--;
-          if (queue.length > 0) queue.shift()!();
-        });
-      };
-      if (running < concurrency) execute();
-      else queue.push(execute);
-    });
-  };
-}
-
-const loadSemaphore = makeSemaphore(4);
 
 export interface UseSceneObjectsReturn {
   addObject: (
@@ -65,64 +35,29 @@ export interface UseSceneObjectsReturn {
     obj: SceneObject,
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
   ) => void;
+  hydrateCacheFromScene: (objects: SceneObject[]) => void;
   disposeAll: () => void;
 }
 
 export function useSceneObjects(): UseSceneObjectsReturn {
-  const cache = useRef<Map<string, CacheEntry>>(new Map());
-
-  const loadGeometry = useCallback((fileId: string, filePath: string): Promise<BufferGeometry> => {
-    const existing = cache.current.get(fileId);
-    if (existing?.promise) return existing.promise;
-    if (existing?.geometry) return Promise.resolve(existing.geometry);
-
-    const promise = loadSemaphore(async () => {
-      const { STLLoader } = await loadSTLLoader();
-      const buffer = await readFile(filePath);
-      if (!buffer) throw new Error(`readFile returned null for ${filePath}`);
-      const loader = new STLLoader();
-      const geo = loader.parse(toArrayBuffer(buffer));
-      geo.computeVertexNormals();
-      geo.rotateX(-Math.PI / 2); // Z-up (STL) → Y-up (Three.js)
-
-      // Center X/Z so the gizmo appears at the visual horizontal center.
-      // Set Y so the model's bottom face sits at y=0 (ground plane).
-      geo.computeBoundingBox();
-      const bb = geo.boundingBox!;
-      const cx = (bb.max.x + bb.min.x) / 2;
-      const cz = (bb.max.z + bb.min.z) / 2;
-      geo.translate(-cx, -bb.min.y, -cz);
-
-      return geo;
-    });
-
-    const entry = cache.current.get(fileId) ?? { promise: null, geometry: null, refCount: 0 };
-    entry.promise = promise;
-    cache.current.set(fileId, entry);
-
-    promise.then((geo) => {
-      const e = cache.current.get(fileId);
-      if (e) { e.geometry = geo; e.promise = null; }
-    }).catch(() => {
-      const e = cache.current.get(fileId);
-      if (e) e.promise = null;
-    });
-
-    return promise;
-  }, []);
+  const cache = useRef(new GeometryCache()).current;
 
   const loadGeometryForObject = useCallback((
     obj: SceneObject,
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
   ) => {
     if (!obj.fileFullPath) return;
-    const entry = cache.current.get(obj.fileId);
-    if (entry?.geometry) {
-      // Already cached — just update this object's geometry
+
+    // Register ownership as first step — handles objects that bypassed addObject
+    // (e.g. objects restored from DB via openScene/createScene).
+    cache.addOwner(obj.fileId, obj.id);
+
+    const cached = cache.getImmediate(obj.fileId);
+    if (cached) {
       setScene((prev) => prev ? {
         ...prev,
         objects: prev.objects.map((o) =>
-          o.id === obj.id ? { ...o, geometry: entry.geometry, loadStatus: 'loaded' } : o
+          o.id === obj.id ? { ...o, geometry: cached, loadStatus: 'loaded' } : o
         ),
       } : prev);
       return;
@@ -136,7 +71,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
       ),
     } : prev);
 
-    loadGeometry(obj.fileId, obj.fileFullPath).then((geo) => {
+    cache.getOrLoad(obj.fileId, obj.fileFullPath).then((geo) => {
       // Update all objects sharing this fileId (duplicate case)
       setScene((prev) => prev ? {
         ...prev,
@@ -154,7 +89,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
         ),
       } : prev);
     });
-  }, [loadGeometry]);
+  }, [cache]);
 
   const addObject = useCallback((
     fileId: string,
@@ -184,10 +119,8 @@ export function useSceneObjects(): UseSceneObjectsReturn {
       loadStatus: 'pending',
     };
 
-    // Increment refcount
-    const entry = cache.current.get(fileId) ?? { promise: null, geometry: null, refCount: 0 };
-    entry.refCount++;
-    cache.current.set(fileId, entry);
+    // Register ownership OUTSIDE the updater (updaters must be pure)
+    cache.addOwner(fileId, id);
 
     setScene((prev) => {
       if (!prev) return prev;
@@ -203,27 +136,22 @@ export function useSceneObjects(): UseSceneObjectsReturn {
     if (fileFullPath) {
       loadGeometryForObject(newObj, setScene);
     }
-  }, [loadGeometryForObject]);
+  }, [cache, loadGeometryForObject]);
 
   const removeObject = useCallback((
     objectId: string,
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
   ) => {
+    // Extract fileId via the updater (peek pattern), then perform cache
+    // mutation OUTSIDE the updater to keep the updater pure. This is safe
+    // because setScene's updater runs synchronously; fileId is set by the
+    // time the next line executes.
+    let fileId: string | undefined;
     setScene((prev) => {
       if (!prev) return prev;
       const obj = prev.objects.find((o) => o.id === objectId);
       if (!obj) return prev;
-
-      // Decrement refcount and dispose if hits 0
-      const entry = cache.current.get(obj.fileId);
-      if (entry) {
-        entry.refCount--;
-        if (entry.refCount <= 0) {
-          entry.geometry?.dispose();
-          cache.current.delete(obj.fileId);
-        }
-      }
-
+      fileId = obj.fileId;
       return {
         ...prev,
         objects: prev.objects.filter((o) => o.id !== objectId),
@@ -231,33 +159,38 @@ export function useSceneObjects(): UseSceneObjectsReturn {
         changeVersion: prev.changeVersion + 1,
       };
     });
-  }, []);
+
+    // Cache mutation outside the updater — safe from StrictMode double-invoke
+    if (fileId) {
+      cache.removeOwner(fileId, objectId);
+    }
+  }, [cache]);
 
   const duplicateObject = useCallback((
     objectId: string,
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
     gridSize = 25.4,
   ) => {
+    // Generate newId and extract fileId OUTSIDE the updater so cache
+    // registration happens outside the pure updater function.
+    const newId = crypto.randomUUID();
+    let fileId: string | undefined;
+
     setScene((prev) => {
       if (!prev) return prev;
       const src = prev.objects.find((o) => o.id === objectId);
       if (!src) return prev;
+      fileId = src.fileId;
 
-      const newId = crypto.randomUUID();
       const offset = gridSize;
       const duplicate: SceneObject = {
         ...src,
         id: newId,
         position: [src.position[0] + offset, src.position[1], src.position[2] + offset],
         sortOrder: prev.objects.length,
-        // Share geometry reference (already in cache)
         geometry: src.geometry,
         loadStatus: src.loadStatus,
       };
-
-      // Increment refcount for shared geometry
-      const entry = cache.current.get(src.fileId);
-      if (entry) entry.refCount++;
 
       return {
         ...prev,
@@ -266,7 +199,12 @@ export function useSceneObjects(): UseSceneObjectsReturn {
         changeVersion: prev.changeVersion + 1,
       };
     });
-  }, []);
+
+    // Register ownership outside the updater
+    if (fileId) {
+      cache.addOwner(fileId, newId);
+    }
+  }, [cache]);
 
   const updateTransform = useCallback((
     objectId: string,
@@ -287,12 +225,16 @@ export function useSceneObjects(): UseSceneObjectsReturn {
     setScene((prev) => prev ? { ...prev, selectedObjectId: objectId } : prev);
   }, []);
 
-  const disposeAll = useCallback(() => {
-    for (const entry of cache.current.values()) {
-      entry.geometry?.dispose();
-    }
-    cache.current.clear();
-  }, []);
+  const hydrateCacheFromScene = useCallback((objects: SceneObject[]) => {
+    cache.hydrateOwners(objects);
+  }, [cache]);
 
-  return { addObject, removeObject, duplicateObject, updateTransform, selectObject, loadGeometryForObject, disposeAll };
+  const disposeAll = useCallback(() => {
+    cache.disposeAll();
+  }, [cache]);
+
+  return {
+    addObject, removeObject, duplicateObject, updateTransform,
+    selectObject, loadGeometryForObject, hydrateCacheFromScene, disposeAll,
+  };
 }

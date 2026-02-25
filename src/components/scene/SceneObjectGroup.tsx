@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { SceneObject } from '../../types/scene';
 import { SceneObject3D } from './SceneObject3D';
 
@@ -15,7 +16,7 @@ interface SceneObjectGroupProps {
   ) => void;
 }
 
-export function SceneObjectGroup({
+export const SceneObjectGroup = memo(function SceneObjectGroup({
   objects, selectedObjectId, transformMode, gridEnabled, gridSize,
   onSelect, onLoadGeometry, onTransformCommit,
 }: SceneObjectGroupProps) {
@@ -36,4 +37,4 @@ export function SceneObjectGroup({
       ))}
     </>
   );
-}
+});

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { ACESFilmicToneMapping } from 'three';
@@ -15,7 +16,7 @@ interface SceneCanvasProps {
   ) => void;
 }
 
-export function SceneCanvas({ sceneState, onSelect, onLoadGeometry, onTransformCommit }: SceneCanvasProps) {
+export const SceneCanvas = memo(function SceneCanvas({ sceneState, onSelect, onLoadGeometry, onTransformCommit }: SceneCanvasProps) {
   const { objects, selectedObjectId, transformMode, meta } = sceneState;
 
   return (
@@ -43,6 +44,8 @@ export function SceneCanvas({ sceneState, onSelect, onLoadGeometry, onTransformC
         onTransformCommit={onTransformCommit}
       />
 
+      {/* makeDefault is required: registers as state.controls so drei's
+          TransformControls can auto-disable orbit during gizmo drag. */}
       <OrbitControls
         makeDefault
         dampingFactor={0.08}
@@ -55,4 +58,4 @@ export function SceneCanvas({ sceneState, onSelect, onLoadGeometry, onTransformC
       </GizmoHelper>
     </Canvas>
   );
-}
+});

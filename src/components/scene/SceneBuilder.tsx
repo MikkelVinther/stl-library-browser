@@ -17,7 +17,7 @@ interface SceneBuilderProps {
 }
 
 export default function SceneBuilder({ sceneState, setSceneState, allFiles, onClose, onRefreshScenes }: SceneBuilderProps) {
-  const { addObject, removeObject, duplicateObject, updateTransform, selectObject, loadGeometryForObject, disposeAll } = useSceneObjects();
+  const { addObject, removeObject, duplicateObject, updateTransform, selectObject, loadGeometryForObject, hydrateCacheFromScene, disposeAll } = useSceneObjects();
   const { toggleGrid, setGridSize } = useGridSnap();
   const { isSaving, queueAutosave, saveNow } = useScenePersistence();
   const [showExitPrompt, setShowExitPrompt] = useState(false);
@@ -28,6 +28,19 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
   // Stable ref to onRefreshScenes so the autosave callback doesn't close over stale state
   const refreshRef = useRef(onRefreshScenes);
   useEffect(() => { refreshRef.current = onRefreshScenes; }, [onRefreshScenes]);
+
+  // Defensive hydration: seed cache ownership for pre-existing objects (opened
+  // from DB). In practice, all objects start as 'pending' and register via
+  // loadGeometryForObject mount effects (which fire before this parent effect).
+  // This ensures the owners set is complete for any edge cases.
+  const lastHydratedSceneId = useRef<string | null>(null);
+  useEffect(() => {
+    if (sceneState.meta.id !== lastHydratedSceneId.current) {
+      hydrateCacheFromScene(sceneState.objects);
+      lastHydratedSceneId.current = sceneState.meta.id;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sceneState.meta.id]);
 
   // Autosave whenever changeVersion advances past savedVersion
   useEffect(() => {

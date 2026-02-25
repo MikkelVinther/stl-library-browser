@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect } from 'react';
+import { memo, useRef, useEffect, useLayoutEffect } from 'react';
 import { TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { SceneObject } from '../../types/scene';
@@ -40,14 +40,17 @@ export const SceneObject3D = memo(function SceneObject3D({
     }
   }, [obj.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync group transform from state when not being dragged by the gizmo
-  useEffect(() => {
+  // Sync group transform from state when not being dragged by the gizmo.
+  // useLayoutEffect runs synchronously before paint, preventing one-frame
+  // flicker. Deps are array references (new ref per state update), which is
+  // acceptable — the memo wrapper prevents re-renders from unrelated objects.
+  useLayoutEffect(() => {
     const g = groupRef.current;
     if (!g || isDragging.current) return;
     g.position.set(...obj.position);
     g.rotation.set(0, obj.rotationY, 0);
     g.scale.set(...obj.scale);
-  });
+  }, [obj.position, obj.rotationY, obj.scale]);
 
   const handleClick = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
