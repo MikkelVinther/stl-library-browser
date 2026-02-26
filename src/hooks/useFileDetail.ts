@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import type { STLFile, ViewerState, CategoryValues, PrintSettings } from '../types/index';
 import { updateFile, readFile } from '../utils/electronBridge';
 import { estimateWeight } from '../utils/printEstimate';
@@ -17,7 +17,16 @@ export function useFileDetail({ updateFileInList }: UseFileDetailParams) {
   const [viewerState, setViewerState] = useState<ViewerState>({ status: 'idle', geometry: null });
   const [showPrintSettings, setShowPrintSettings] = useState(false);
 
+  // Request version counter — incremented on every openFile/closeFile to
+  // invalidate in-flight loads. Stale completions compare their captured
+  // version against the current value and bail out if mismatched.
+  const requestVersionRef = useRef(0);
+
   const openFile = (file: STLFile) => {
+    // Invalidate any in-flight load from a previous file
+    requestVersionRef.current++;
+    // Dispose any previous geometry before switching files
+    viewerState.geometry?.dispose();
     setSelectedFile(file);
     setFileTagsEdit([...(file.tags || [])]);
     setFileCategoriesEdit({ ...(file.categories || {}) });
@@ -26,6 +35,7 @@ export function useFileDetail({ updateFileInList }: UseFileDetailParams) {
   };
 
   const closeFile = () => {
+    requestVersionRef.current++;
     viewerState.geometry?.dispose();
     setViewerState({ status: 'idle', geometry: null });
     setSelectedFile(null);
@@ -37,16 +47,27 @@ export function useFileDetail({ updateFileInList }: UseFileDetailParams) {
 
   const handleLoad3D = async () => {
     if (!selectedFile?.fullPath) return;
+    const version = ++requestVersionRef.current;
+    // Dispose previous geometry if switching directly without closeFile
+    viewerState.geometry?.dispose();
     setViewerState({ status: 'loading', geometry: null });
     try {
       const buffer = await readFile(selectedFile.fullPath);
+      if (version !== requestVersionRef.current) return; // stale
       if (!buffer) { setViewerState({ status: 'error', geometry: null }); return; }
       const { STLLoader } = await loadSTLLoader();
+      if (version !== requestVersionRef.current) return; // stale
       const loader = new STLLoader();
       const geometry = loader.parse(toArrayBuffer(buffer));
       geometry.computeVertexNormals();
+      if (version !== requestVersionRef.current) {
+        // Stale completion — dispose immediately to prevent leak
+        geometry.dispose();
+        return;
+      }
       setViewerState({ status: 'loaded', geometry });
     } catch {
+      if (version !== requestVersionRef.current) return; // stale
       setViewerState({ status: 'error', geometry: null });
     }
   };

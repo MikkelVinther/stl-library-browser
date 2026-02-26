@@ -248,4 +248,51 @@ describe('GeometryCache', () => {
     await expect(promise).rejects.toThrow('fail');
     expect(cache._size()).toBe(0);
   });
+
+  // 11. Semaphore isolation — separate cache instances don't block each other
+  it('semaphore is per-instance — one cache does not starve another', async () => {
+    const cacheA = new GeometryCache();
+    const cacheB = new GeometryCache();
+
+    // Track which readFile calls resolve and which are held pending.
+    // Route by filePath: cacheA paths stay pending, cacheB path resolves immediately.
+    const resolvers: Array<(v: ArrayBuffer) => void> = [];
+    const geoB = makeGeoStub();
+    geoStubQueue.push(geoB);
+
+    mockReadFile.mockImplementation((filePath: string) => {
+      if (filePath === '/path/b.stl') {
+        // cacheB's load resolves immediately
+        return Promise.resolve(new ArrayBuffer(8));
+      }
+      // cacheA's loads are held pending
+      return new Promise<ArrayBuffer>((resolve) => {
+        resolvers.push(resolve);
+      });
+    });
+
+    // Start 5 loads on cacheA — 4 run immediately (hitting semaphore), 1 queued
+    for (let i = 0; i < 5; i++) {
+      cacheA.addOwner(`file-${i}`, `obj-a-${i}`);
+      cacheA.getOrLoad(`file-${i}`, `/path/${i}.stl`);
+    }
+
+    // Start 1 load on cacheB — should NOT be blocked by cacheA's queue
+    cacheB.addOwner('file-b', 'obj-b-1');
+    const promiseB = cacheB.getOrLoad('file-b', '/path/b.stl');
+
+    // cacheB's load should resolve independently
+    const result = await promiseB;
+    expect(result).toBe(geoB);
+
+    // Clean up: resolve all cacheA loads
+    for (const resolve of resolvers) {
+      resolve(new ArrayBuffer(8));
+    }
+    // Wait for cacheA promises to settle
+    await new Promise((r) => setTimeout(r, 10));
+
+    cacheA.disposeAll();
+    cacheB.disposeAll();
+  });
 });

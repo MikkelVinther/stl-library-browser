@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const db = require('./database.cjs');
 const { scanDirectory, readFile, countSTLFiles } = require('./filesystem.cjs');
+const pathPolicy = require('./pathPolicy.cjs');
 
 let mainWindow;
 
@@ -25,7 +26,16 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // Seed path policy with previously-imported directories before any IPC calls
+  try {
+    const dirs = db.getAllDirectories();
+    pathPolicy.seedFromDirectories(dirs);
+  } catch (e) {
+    console.error('[main] Failed to seed path policy from DB:', e.message);
+  }
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -57,12 +67,24 @@ ipcMain.handle('dialog:openFolder', async () => {
     properties: ['openDirectory'],
   });
   if (result.canceled) return null;
-  return result.filePaths[0];
+  const selected = result.filePaths[0];
+  // Approve the user-selected directory for subsequent file operations
+  pathPolicy.addApprovedRoot(selected);
+  return selected;
 });
 
-ipcMain.handle('fs:scanDirectory', (_, folderPath) => scanDirectory(folderPath));
-ipcMain.handle('fs:readFile', (_, filePath) => readFile(filePath));
-ipcMain.handle('fs:countSTLFiles', (_, folderPath) => countSTLFiles(folderPath));
+ipcMain.handle('fs:scanDirectory', (_, folderPath) => {
+  pathPolicy.validateDirectoryPath(folderPath);
+  return scanDirectory(folderPath);
+});
+ipcMain.handle('fs:readFile', (_, filePath) => {
+  pathPolicy.validatePath(filePath, { requireExtension: '.stl' });
+  return readFile(filePath);
+});
+ipcMain.handle('fs:countSTLFiles', (_, folderPath) => {
+  pathPolicy.validateDirectoryPath(folderPath);
+  return countSTLFiles(folderPath);
+});
 
 // ── Scene IPC handlers ──
 ipcMain.handle('db:getAllScenes', () => db.getAllScenes());

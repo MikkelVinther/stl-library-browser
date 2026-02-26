@@ -8,6 +8,7 @@ import { SceneObjectGroup } from './SceneObjectGroup';
 
 interface SceneCanvasProps {
   sceneState: SceneState;
+  selectedIdSet: Set<string>;
   onSelect: (id: string | null, toggle?: boolean) => void;
   onLoadGeometry: (obj: SceneObject) => void;
   onTransformCommit: (
@@ -16,8 +17,8 @@ interface SceneCanvasProps {
   ) => void;
 }
 
-export const SceneCanvas = memo(function SceneCanvas({ sceneState, onSelect, onLoadGeometry, onTransformCommit }: SceneCanvasProps) {
-  const { objects, selectedObjectIds, transformMode, meta } = sceneState;
+export const SceneCanvas = memo(function SceneCanvas({ sceneState, selectedIdSet, onSelect, onLoadGeometry, onTransformCommit }: SceneCanvasProps) {
+  const { objects, transformMode, meta } = sceneState;
 
   return (
     <Canvas
@@ -35,7 +36,7 @@ export const SceneCanvas = memo(function SceneCanvas({ sceneState, onSelect, onL
 
       <SceneObjectGroup
         objects={objects}
-        selectedObjectIds={selectedObjectIds}
+        selectedIdSet={selectedIdSet}
         transformMode={transformMode}
         gridEnabled={meta.gridEnabled}
         gridSize={meta.gridSize}

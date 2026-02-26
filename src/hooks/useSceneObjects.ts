@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { GeometryCache } from '../utils/geometryCache';
 import type { SceneObject, SceneState } from '../types/scene';
 
@@ -28,10 +28,16 @@ export interface UseSceneObjectsReturn {
   ) => void;
   removeObject: (
     objectId: string,
+    fileId: string,
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
   ) => void;
   duplicateObject: (
-    objectId: string,
+    source: Pick<SceneObject, 'id' | 'fileId' | 'fileName' | 'fileFullPath' | 'fileThumbnail' | 'sceneId' | 'position' | 'rotationY' | 'scale' | 'color' | 'geometry' | 'loadStatus'>,
+    setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
+    gridSize?: number,
+  ) => void;
+  duplicateObjects: (
+    sources: Pick<SceneObject, 'id' | 'fileId' | 'fileName' | 'fileFullPath' | 'fileThumbnail' | 'sceneId' | 'position' | 'rotationY' | 'scale' | 'color' | 'geometry' | 'loadStatus'>[],
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
     gridSize?: number,
   ) => void;
@@ -60,6 +66,14 @@ export interface UseSceneObjectsReturn {
 
 export function useSceneObjects(): UseSceneObjectsReturn {
   const cache = useRef(new GeometryCache()).current;
+  const mountedRef = useRef(true);
+
+  // Clean up mounted flag on unmount to prevent stale setScene calls
+  // from in-flight geometry load promises.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const loadGeometryForObject = useCallback((
     obj: SceneObject,
@@ -91,6 +105,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
     } : prev);
 
     cache.getOrLoad(obj.fileId, obj.fileFullPath).then((geo) => {
+      if (!mountedRef.current) return;
       // Update all objects sharing this fileId (duplicate case)
       setScene((prev) => prev ? {
         ...prev,
@@ -101,6 +116,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
         ),
       } : prev);
     }).catch(() => {
+      if (!mountedRef.current) return;
       setScene((prev) => prev ? {
         ...prev,
         objects: prev.objects.map((o) =>
@@ -159,18 +175,15 @@ export function useSceneObjects(): UseSceneObjectsReturn {
 
   const removeObject = useCallback((
     objectId: string,
+    fileId: string,
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
   ) => {
-    // Extract fileId via the updater (peek pattern), then perform cache
-    // mutation OUTSIDE the updater to keep the updater pure. This is safe
-    // because setScene's updater runs synchronously; fileId is set by the
-    // time the next line executes.
-    let fileId: string | undefined;
+    // fileId provided by caller — no state-updater side-channel needed.
+    // Cache mutation outside the updater, safe from StrictMode double-invoke.
+    cache.removeOwner(fileId, objectId);
+
     setScene((prev) => {
       if (!prev) return prev;
-      const obj = prev.objects.find((o) => o.id === objectId);
-      if (!obj) return prev;
-      fileId = obj.fileId;
       return {
         ...prev,
         objects: prev.objects.filter((o) => o.id !== objectId),
@@ -178,39 +191,39 @@ export function useSceneObjects(): UseSceneObjectsReturn {
         changeVersion: prev.changeVersion + 1,
       };
     });
-
-    // Cache mutation outside the updater — safe from StrictMode double-invoke
-    if (fileId) {
-      cache.removeOwner(fileId, objectId);
-    }
   }, [cache]);
 
+  type DuplicateSource = Pick<SceneObject, 'id' | 'fileId' | 'fileName' | 'fileFullPath' | 'fileThumbnail' | 'sceneId' | 'position' | 'rotationY' | 'scale' | 'color' | 'geometry' | 'loadStatus'>;
+
   const duplicateObject = useCallback((
-    objectId: string,
+    source: DuplicateSource,
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
     gridSize = 25.4,
   ) => {
-    // Generate newId and extract fileId OUTSIDE the updater so cache
-    // registration happens outside the pure updater function.
+    // Source object data provided by caller — no state-updater side-channel.
     const newId = crypto.randomUUID();
-    let fileId: string | undefined;
+    const offset = gridSize;
+
+    // Register ownership before state update (idempotent, no harm if update fails)
+    cache.addOwner(source.fileId, newId);
 
     setScene((prev) => {
       if (!prev) return prev;
-      const src = prev.objects.find((o) => o.id === objectId);
-      if (!src) return prev;
-      fileId = src.fileId;
-
-      const offset = gridSize;
       const duplicate: SceneObject = {
-        ...src,
         id: newId,
-        position: [src.position[0] + offset, src.position[1], src.position[2] + offset],
+        sceneId: source.sceneId,
+        fileId: source.fileId,
+        fileName: source.fileName,
+        fileFullPath: source.fileFullPath,
+        fileThumbnail: source.fileThumbnail,
+        position: [source.position[0] + offset, source.position[1], source.position[2] + offset],
+        rotationY: source.rotationY,
+        scale: [...source.scale],
+        color: source.color,
         sortOrder: prev.objects.length,
-        geometry: src.geometry,
-        loadStatus: src.loadStatus,
+        geometry: source.geometry,
+        loadStatus: source.loadStatus,
       };
-
       return {
         ...prev,
         objects: [...prev.objects, duplicate],
@@ -218,11 +231,51 @@ export function useSceneObjects(): UseSceneObjectsReturn {
         changeVersion: prev.changeVersion + 1,
       };
     });
+  }, [cache]);
 
-    // Register ownership outside the updater
-    if (fileId) {
-      cache.addOwner(fileId, newId);
+  const duplicateObjects = useCallback((
+    sources: DuplicateSource[],
+    setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
+    gridSize = 25.4,
+  ) => {
+    if (sources.length === 0) return;
+    const offset = gridSize;
+    const newIds: string[] = [];
+    const duplicates: Array<{ source: DuplicateSource; newId: string }> = [];
+
+    for (const source of sources) {
+      const newId = crypto.randomUUID();
+      newIds.push(newId);
+      duplicates.push({ source, newId });
+      // Register ownership before state update
+      cache.addOwner(source.fileId, newId);
     }
+
+    // Single state update for all duplications
+    setScene((prev) => {
+      if (!prev) return prev;
+      const newObjects = duplicates.map(({ source, newId }, i) => ({
+        id: newId,
+        sceneId: source.sceneId,
+        fileId: source.fileId,
+        fileName: source.fileName,
+        fileFullPath: source.fileFullPath,
+        fileThumbnail: source.fileThumbnail,
+        position: [source.position[0] + offset, source.position[1], source.position[2] + offset] as [number, number, number],
+        rotationY: source.rotationY,
+        scale: [...source.scale] as [number, number, number],
+        color: source.color,
+        sortOrder: prev.objects.length + i,
+        geometry: source.geometry,
+        loadStatus: source.loadStatus,
+      }));
+      return {
+        ...prev,
+        objects: [...prev.objects, ...newObjects],
+        selectedObjectIds: newIds,
+        changeVersion: prev.changeVersion + 1,
+      };
+    });
   }, [cache]);
 
   const pasteObject = useCallback((
@@ -307,7 +360,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
   }, [cache]);
 
   return {
-    addObject, removeObject, duplicateObject, pasteObject, updateTransform,
-    selectObject, loadGeometryForObject, hydrateCacheFromScene, disposeAll,
+    addObject, removeObject, duplicateObject, duplicateObjects, pasteObject,
+    updateTransform, selectObject, loadGeometryForObject, hydrateCacheFromScene, disposeAll,
   };
 }

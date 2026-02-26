@@ -1,14 +1,15 @@
+import { memo } from 'react';
 import { Trash2, Box } from 'lucide-react';
 import type { SceneObject } from '../../types/scene';
 
 interface SceneObjectListProps {
   objects: SceneObject[];
-  selectedObjectIds: string[];
+  selectedIdSet: Set<string>;
   onSelect: (id: string, toggle?: boolean) => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: string, fileId: string) => void;
 }
 
-export function SceneObjectList({ objects, selectedObjectIds, onSelect, onRemove }: SceneObjectListProps) {
+export const SceneObjectList = memo(function SceneObjectList({ objects, selectedIdSet, onSelect, onRemove }: SceneObjectListProps) {
   if (objects.length === 0) {
     return (
       <p className="text-xs text-faint px-2 py-3 text-center">
@@ -20,7 +21,7 @@ export function SceneObjectList({ objects, selectedObjectIds, onSelect, onRemove
   return (
     <div className="space-y-0.5">
       {objects.map((obj) => {
-        const isSelected = selectedObjectIds.includes(obj.id);
+        const isSelected = selectedIdSet.has(obj.id);
         return (
           <div
             key={obj.id}
@@ -38,7 +39,7 @@ export function SceneObjectList({ objects, selectedObjectIds, onSelect, onRemove
               {obj.fileName || obj.fileId.slice(0, 8)}
             </span>
             <button
-              onClick={(e) => { e.stopPropagation(); onRemove(obj.id); }}
+              onClick={(e) => { e.stopPropagation(); onRemove(obj.id, obj.fileId); }}
               title="Remove from scene"
               className="opacity-0 group-hover:opacity-100 p-1 rounded text-faint hover:text-red-400 transition-all flex-shrink-0"
             >
@@ -49,4 +50,4 @@ export function SceneObjectList({ objects, selectedObjectIds, onSelect, onRemove
       })}
     </div>
   );
-}
+});

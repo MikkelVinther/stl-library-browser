@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, lazy, Suspense } from 'react';
 import { Box, Sun, Moon } from 'lucide-react';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import ImportProgress from './components/ImportProgress';
@@ -9,9 +9,11 @@ import { MobileTopBar } from './components/MobileTopBar';
 import { MobileFilterDrawer } from './components/MobileFilterDrawer';
 import { FilterSidebar } from './components/FilterSidebar';
 import { FileGrid } from './components/FileGrid';
-import { FileDetailModal } from './components/FileDetailModal';
-import SceneBuilder from './components/scene/SceneBuilder';
+import ErrorBoundary from './components/ErrorBoundary';
 import { useLibrary } from './hooks/useLibrary';
+
+const SceneBuilder = lazy(() => import('./components/scene/SceneBuilder'));
+const FileDetailModal = lazy(() => import('./components/FileDetailModal'));
 import { useFilters } from './hooks/useFilters';
 import { useSelection } from './hooks/useSelection';
 import { useImport } from './hooks/useImport';
@@ -82,13 +84,21 @@ export default function App() {
 
   if (activeScene) {
     return (
-      <SceneBuilder
-        sceneState={activeScene}
-        setSceneState={setActiveScene}
-        allFiles={files}
-        onClose={closeScene}
-        onRefreshScenes={refreshScenes}
-      />
+      <ErrorBoundary>
+        <Suspense fallback={
+          <div className="flex items-center justify-center h-screen bg-[#0a1020]">
+            <div className="w-6 h-6 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin" />
+          </div>
+        }>
+          <SceneBuilder
+            sceneState={activeScene}
+            setSceneState={setActiveScene}
+            allFiles={files}
+            onClose={closeScene}
+            onRefreshScenes={refreshScenes}
+          />
+        </Suspense>
+      </ErrorBoundary>
     );
   }
 
@@ -199,26 +209,30 @@ export default function App() {
       )}
 
       {selectedFile && (
-        <FileDetailModal
-          file={selectedFile}
-          fileTagsEdit={fileTagsEdit}
-          fileCategoriesEdit={fileCategoriesEdit}
-          onCategoryChange={(catId, value) => setFileCategoriesEdit((prev) => ({ ...prev, [catId]: value }))}
-          newTag={newTag}
-          onNewTagChange={setNewTag}
-          viewerState={viewerState}
-          showPrintSettings={showPrintSettings}
-          onTogglePrintSettings={() => setShowPrintSettings((v) => !v)}
-          tagsChanged={tagsChanged}
-          categoriesChanged={categoriesChanged}
-          onClose={closeFile}
-          onLoad3D={handleLoad3D}
-          onAddTag={addEditTag}
-          onRemoveTag={removeEditTag}
-          onSaveTags={saveTags}
-          onSaveCategories={saveCategories}
-          onSavePrintSettings={savePrintSettings}
-        />
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <FileDetailModal
+              file={selectedFile}
+              fileTagsEdit={fileTagsEdit}
+              fileCategoriesEdit={fileCategoriesEdit}
+              onCategoryChange={(catId, value) => setFileCategoriesEdit((prev) => ({ ...prev, [catId]: value }))}
+              newTag={newTag}
+              onNewTagChange={setNewTag}
+              viewerState={viewerState}
+              showPrintSettings={showPrintSettings}
+              onTogglePrintSettings={() => setShowPrintSettings((v) => !v)}
+              tagsChanged={tagsChanged}
+              categoriesChanged={categoriesChanged}
+              onClose={closeFile}
+              onLoad3D={handleLoad3D}
+              onAddTag={addEditTag}
+              onRemoveTag={removeEditTag}
+              onSaveTags={saveTags}
+              onSaveCategories={saveCategories}
+              onSavePrintSettings={savePrintSettings}
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
     </div>
   );

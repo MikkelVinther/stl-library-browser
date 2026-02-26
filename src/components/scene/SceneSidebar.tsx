@@ -7,15 +7,16 @@ import { SceneSidebarFileCard } from './SceneSidebarFileCard';
 
 interface SceneSidebarProps {
   sceneState: SceneState;
+  selectedIdSet: Set<string>;
   allFiles: STLFile[];
   onSelectObject: (id: string, toggle?: boolean) => void;
-  onRemoveObject: (id: string) => void;
+  onRemoveObject: (id: string, fileId: string) => void;
   onAddFile: (file: STLFile) => void;
   onColorChange: (objectId: string, color: string) => void;
 }
 
 export function SceneSidebar({
-  sceneState, allFiles, onSelectObject, onRemoveObject, onAddFile, onColorChange,
+  sceneState, selectedIdSet, allFiles, onSelectObject, onRemoveObject, onAddFile, onColorChange,
 }: SceneSidebarProps) {
   const [search, setSearch] = useState('');
 
@@ -37,7 +38,7 @@ export function SceneSidebar({
         <div className="max-h-48 overflow-y-auto">
           <SceneObjectList
             objects={objects}
-            selectedObjectIds={selectedObjectIds}
+            selectedIdSet={selectedIdSet}
             onSelect={onSelectObject}
             onRemove={onRemoveObject}
           />

@@ -4,7 +4,7 @@ import { SceneObject3D } from './SceneObject3D';
 
 interface SceneObjectGroupProps {
   objects: SceneObject[];
-  selectedObjectIds: string[];
+  selectedIdSet: Set<string>;
   transformMode: 'translate' | 'rotate' | 'scale';
   gridEnabled: boolean;
   gridSize: number;
@@ -17,14 +17,14 @@ interface SceneObjectGroupProps {
 }
 
 export const SceneObjectGroup = memo(function SceneObjectGroup({
-  objects, selectedObjectIds, transformMode, gridEnabled, gridSize,
+  objects, selectedIdSet, transformMode, gridEnabled, gridSize,
   onSelect, onLoadGeometry, onTransformCommit,
 }: SceneObjectGroupProps) {
-  const isSingleSelection = selectedObjectIds.length === 1;
+  const isSingleSelection = selectedIdSet.size === 1;
   return (
     <>
       {objects.map((obj) => {
-        const isSelected = selectedObjectIds.includes(obj.id);
+        const isSelected = selectedIdSet.has(obj.id);
         return (
           <SceneObject3D
             key={obj.id}

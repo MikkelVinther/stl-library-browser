@@ -10,10 +10,8 @@ interface CacheEntry {
 }
 
 // Semaphore for limiting parallel geometry loads.
-// Module-level so all cache instances share the same concurrency limit.
-// Known limitation: after scene close, in-flight and queued loads continue
-// to execute, occupying semaphore slots. Resolved geometries for closed
-// scenes are disposed at resolve time.
+// Instance-scoped so each GeometryCache has its own concurrency limit.
+// This prevents one scene's in-flight loads from starving another scene.
 function makeSemaphore(concurrency: number) {
   let running = 0;
   const queue: Array<() => void> = [];
@@ -32,10 +30,9 @@ function makeSemaphore(concurrency: number) {
   };
 }
 
-const loadSemaphore = makeSemaphore(4);
-
 export class GeometryCache {
   private entries = new Map<string, CacheEntry>();
+  private loadSemaphore = makeSemaphore(4);
 
   /** Register an object as an owner of a fileId's geometry. Idempotent. */
   addOwner(fileId: string, objectId: string): void {
@@ -93,7 +90,7 @@ export class GeometryCache {
     if (existing?.promise) return existing.promise;
     if (existing?.geometry) return Promise.resolve(existing.geometry);
 
-    const promise = loadSemaphore(async () => {
+    const promise = this.loadSemaphore(async () => {
       const { STLLoader } = await loadSTLLoader();
       const buffer = await readFile(filePath);
       if (!buffer) throw new Error(`readFile returned null for ${filePath}`);

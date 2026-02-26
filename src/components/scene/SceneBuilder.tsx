@@ -17,7 +17,7 @@ interface SceneBuilderProps {
 }
 
 export default function SceneBuilder({ sceneState, setSceneState, allFiles, onClose, onRefreshScenes }: SceneBuilderProps) {
-  const { addObject, removeObject, duplicateObject, pasteObject, updateTransform, selectObject, loadGeometryForObject, hydrateCacheFromScene, disposeAll } = useSceneObjects();
+  const { addObject, removeObject, duplicateObject, duplicateObjects, pasteObject, updateTransform, selectObject, loadGeometryForObject, hydrateCacheFromScene, disposeAll } = useSceneObjects();
   const clipboardRef = useRef<ObjectClipboard[] | null>(null);
   const { toggleGrid, setGridSize } = useGridSnap();
   const { isSaving, queueAutosave, saveNow } = useScenePersistence();
@@ -131,26 +131,30 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
     );
   }, [addObject, sceneState.meta, setSceneState]);
 
-  const handleRemoveObject = useCallback((id: string) => {
-    removeObject(id, setSceneState);
+  const handleRemoveObject = useCallback((id: string, fileId: string) => {
+    removeObject(id, fileId, setSceneState);
   }, [removeObject, setSceneState]);
 
   const handleColorChange = useCallback((objectId: string, color: string) => {
     updateTransform(objectId, { color: color || null }, setSceneState);
   }, [updateTransform, setSceneState]);
 
+  // Memoized Set for O(1) selection membership checks in render loops
+  const selectedIdSet = useMemo(
+    () => new Set(sceneState.selectedObjectIds),
+    [sceneState.selectedObjectIds],
+  );
+
   const handleDuplicate = useCallback(() => {
-    const ids = sceneState.selectedObjectIds;
-    if (ids.length === 0) return;
-    for (const id of ids) {
-      duplicateObject(id, setSceneState, sceneState.meta.gridSize);
-    }
-  }, [sceneState.selectedObjectIds, sceneState.meta.gridSize, duplicateObject, setSceneState]);
+    if (selectedIdSet.size === 0) return;
+    const sources = sceneState.objects.filter((o) => selectedIdSet.has(o.id));
+    if (sources.length === 0) return;
+    duplicateObjects(sources, setSceneState, sceneState.meta.gridSize);
+  }, [selectedIdSet, sceneState.objects, sceneState.meta.gridSize, duplicateObjects, setSceneState]);
 
   const handleCopy = useCallback(() => {
-    const ids = sceneState.selectedObjectIds;
-    if (ids.length === 0) return;
-    const selected = sceneState.objects.filter((o) => ids.includes(o.id));
+    if (selectedIdSet.size === 0) return;
+    const selected = sceneState.objects.filter((o) => selectedIdSet.has(o.id));
     clipboardRef.current = selected.map((obj) => ({
       fileId: obj.fileId,
       fileName: obj.fileName,
@@ -162,7 +166,7 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
       scale: [...obj.scale] as [number, number, number],
       color: obj.color,
     }));
-  }, [sceneState.selectedObjectIds, sceneState.objects, sceneState.meta.id]);
+  }, [selectedIdSet, sceneState.objects, sceneState.meta.id]);
 
   const handlePaste = useCallback(() => {
     if (!clipboardRef.current || clipboardRef.current.length === 0) return;
@@ -187,7 +191,8 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
         case 'Backspace':
           if (sceneState.selectedObjectIds.length > 0) {
             for (const id of [...sceneState.selectedObjectIds]) {
-              handleRemoveObject(id);
+              const obj = sceneState.objects.find((o) => o.id === id);
+              if (obj) handleRemoveObject(id, obj.fileId);
             }
           }
           break;
@@ -224,7 +229,7 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [
-    sceneState.selectedObjectIds, handleSetTransformMode, handleToggleGrid,
+    sceneState.selectedObjectIds, sceneState.objects, handleSetTransformMode, handleToggleGrid,
     handleRemoveObject, handleDuplicate, handleCopy, handlePaste, handleSelect, handleBack,
   ]);
 
@@ -259,6 +264,7 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
         <div className="flex-1 min-w-0">
           <SceneCanvas
             sceneState={sceneState}
+            selectedIdSet={selectedIdSet}
             onSelect={handleSelect}
             onLoadGeometry={handleLoadGeometry}
             onTransformCommit={handleTransformCommit}
@@ -267,6 +273,7 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
 
         <SceneSidebar
           sceneState={sceneState}
+          selectedIdSet={selectedIdSet}
           allFiles={allFiles}
           onSelectObject={handleSelect}
           onRemoveObject={handleRemoveObject}
