@@ -2,6 +2,19 @@ import { useRef, useCallback } from 'react';
 import { GeometryCache } from '../utils/geometryCache';
 import type { SceneObject, SceneState } from '../types/scene';
 
+/** Snapshot of an object's data for clipboard paste (no geometry/runtime state). */
+export interface ObjectClipboard {
+  fileId: string;
+  fileName: string;
+  fileFullPath: string | null;
+  fileThumbnail: string | null;
+  sceneId: string;
+  position: [number, number, number];
+  rotationY: number;
+  scale: [number, number, number];
+  color: string | null;
+}
+
 export interface UseSceneObjectsReturn {
   addObject: (
     fileId: string,
@@ -22,6 +35,11 @@ export interface UseSceneObjectsReturn {
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
     gridSize?: number,
   ) => void;
+  pasteObject: (
+    clipboard: ObjectClipboard,
+    setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
+    gridSize?: number,
+  ) => void;
   updateTransform: (
     objectId: string,
     patch: Partial<Pick<SceneObject, 'position' | 'rotationY' | 'scale' | 'color'>>,
@@ -30,6 +48,7 @@ export interface UseSceneObjectsReturn {
   selectObject: (
     objectId: string | null,
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
+    toggle?: boolean,
   ) => void;
   loadGeometryForObject: (
     obj: SceneObject,
@@ -155,7 +174,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
       return {
         ...prev,
         objects: prev.objects.filter((o) => o.id !== objectId),
-        selectedObjectId: prev.selectedObjectId === objectId ? null : prev.selectedObjectId,
+        selectedObjectIds: prev.selectedObjectIds.filter((id) => id !== objectId),
         changeVersion: prev.changeVersion + 1,
       };
     });
@@ -195,7 +214,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
       return {
         ...prev,
         objects: [...prev.objects, duplicate],
-        selectedObjectId: newId,
+        selectedObjectIds: [newId],
         changeVersion: prev.changeVersion + 1,
       };
     });
@@ -205,6 +224,46 @@ export function useSceneObjects(): UseSceneObjectsReturn {
       cache.addOwner(fileId, newId);
     }
   }, [cache]);
+
+  const pasteObject = useCallback((
+    clipboard: ObjectClipboard,
+    setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
+    gridSize = 25.4,
+  ) => {
+    const id = crypto.randomUUID();
+    const offset = gridSize;
+    const newObj: SceneObject = {
+      id,
+      sceneId: clipboard.sceneId,
+      fileId: clipboard.fileId,
+      fileName: clipboard.fileName,
+      fileFullPath: clipboard.fileFullPath,
+      fileThumbnail: clipboard.fileThumbnail,
+      position: [clipboard.position[0] + offset, clipboard.position[1], clipboard.position[2] + offset],
+      rotationY: clipboard.rotationY,
+      scale: [...clipboard.scale],
+      color: clipboard.color,
+      sortOrder: 0,
+      geometry: null,
+      loadStatus: 'pending',
+    };
+
+    cache.addOwner(clipboard.fileId, id);
+
+    setScene((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        objects: [...prev.objects, { ...newObj, sortOrder: prev.objects.length }],
+        selectedObjectIds: [id],
+        changeVersion: prev.changeVersion + 1,
+      };
+    });
+
+    if (clipboard.fileFullPath) {
+      loadGeometryForObject(newObj, setScene);
+    }
+  }, [cache, loadGeometryForObject]);
 
   const updateTransform = useCallback((
     objectId: string,
@@ -221,8 +280,22 @@ export function useSceneObjects(): UseSceneObjectsReturn {
   const selectObject = useCallback((
     objectId: string | null,
     setScene: React.Dispatch<React.SetStateAction<SceneState | null>>,
+    toggle = false,
   ) => {
-    setScene((prev) => prev ? { ...prev, selectedObjectId: objectId } : prev);
+    setScene((prev) => {
+      if (!prev) return prev;
+      if (objectId === null) return { ...prev, selectedObjectIds: [] };
+      if (toggle) {
+        const has = prev.selectedObjectIds.includes(objectId);
+        return {
+          ...prev,
+          selectedObjectIds: has
+            ? prev.selectedObjectIds.filter((id) => id !== objectId)
+            : [...prev.selectedObjectIds, objectId],
+        };
+      }
+      return { ...prev, selectedObjectIds: [objectId] };
+    });
   }, []);
 
   const hydrateCacheFromScene = useCallback((objects: SceneObject[]) => {
@@ -234,7 +307,7 @@ export function useSceneObjects(): UseSceneObjectsReturn {
   }, [cache]);
 
   return {
-    addObject, removeObject, duplicateObject, updateTransform,
+    addObject, removeObject, duplicateObject, pasteObject, updateTransform,
     selectObject, loadGeometryForObject, hydrateCacheFromScene, disposeAll,
   };
 }

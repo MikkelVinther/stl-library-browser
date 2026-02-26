@@ -4,7 +4,7 @@ import type { STLFile } from '../../types/index';
 import { SceneCanvas } from './SceneCanvas';
 import { SceneToolbar } from './SceneToolbar';
 import { SceneSidebar } from './SceneSidebar';
-import { useSceneObjects } from '../../hooks/useSceneObjects';
+import { useSceneObjects, type ObjectClipboard } from '../../hooks/useSceneObjects';
 import { useGridSnap } from '../../hooks/useGridSnap';
 import { useScenePersistence } from '../../hooks/useScenePersistence';
 
@@ -17,7 +17,8 @@ interface SceneBuilderProps {
 }
 
 export default function SceneBuilder({ sceneState, setSceneState, allFiles, onClose, onRefreshScenes }: SceneBuilderProps) {
-  const { addObject, removeObject, duplicateObject, updateTransform, selectObject, loadGeometryForObject, hydrateCacheFromScene, disposeAll } = useSceneObjects();
+  const { addObject, removeObject, duplicateObject, pasteObject, updateTransform, selectObject, loadGeometryForObject, hydrateCacheFromScene, disposeAll } = useSceneObjects();
+  const clipboardRef = useRef<ObjectClipboard[] | null>(null);
   const { toggleGrid, setGridSize } = useGridSnap();
   const { isSaving, queueAutosave, saveNow } = useScenePersistence();
   const [showExitPrompt, setShowExitPrompt] = useState(false);
@@ -86,8 +87,8 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
     }
   }, [sceneState, saveNow, setSceneState, onRefreshScenes]);
 
-  const handleSelect = useCallback((id: string | null) => {
-    selectObject(id, setSceneState);
+  const handleSelect = useCallback((id: string | null, toggle = false) => {
+    selectObject(id, setSceneState, toggle);
   }, [selectObject, setSceneState]);
 
   const handleLoadGeometry = useCallback((obj: SceneObject) => {
@@ -139,9 +140,36 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
   }, [updateTransform, setSceneState]);
 
   const handleDuplicate = useCallback(() => {
-    if (!sceneState.selectedObjectId) return;
-    duplicateObject(sceneState.selectedObjectId, setSceneState, sceneState.meta.gridSize);
-  }, [sceneState.selectedObjectId, sceneState.meta.gridSize, duplicateObject, setSceneState]);
+    const ids = sceneState.selectedObjectIds;
+    if (ids.length === 0) return;
+    for (const id of ids) {
+      duplicateObject(id, setSceneState, sceneState.meta.gridSize);
+    }
+  }, [sceneState.selectedObjectIds, sceneState.meta.gridSize, duplicateObject, setSceneState]);
+
+  const handleCopy = useCallback(() => {
+    const ids = sceneState.selectedObjectIds;
+    if (ids.length === 0) return;
+    const selected = sceneState.objects.filter((o) => ids.includes(o.id));
+    clipboardRef.current = selected.map((obj) => ({
+      fileId: obj.fileId,
+      fileName: obj.fileName,
+      fileFullPath: obj.fileFullPath,
+      fileThumbnail: obj.fileThumbnail,
+      sceneId: sceneState.meta.id,
+      position: [...obj.position] as [number, number, number],
+      rotationY: obj.rotationY,
+      scale: [...obj.scale] as [number, number, number],
+      color: obj.color,
+    }));
+  }, [sceneState.selectedObjectIds, sceneState.objects, sceneState.meta.id]);
+
+  const handlePaste = useCallback(() => {
+    if (!clipboardRef.current || clipboardRef.current.length === 0) return;
+    for (const item of clipboardRef.current) {
+      pasteObject(item, setSceneState, sceneState.meta.gridSize);
+    }
+  }, [pasteObject, setSceneState, sceneState.meta.gridSize]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -157,19 +185,35 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
         case 'g': case 'G': handleToggleGrid(); break;
         case 'Delete':
         case 'Backspace':
-          if (sceneState.selectedObjectId) {
-            handleRemoveObject(sceneState.selectedObjectId);
+          if (sceneState.selectedObjectIds.length > 0) {
+            for (const id of [...sceneState.selectedObjectIds]) {
+              handleRemoveObject(id);
+            }
+          }
+          break;
+        case 'c':
+        case 'C':
+          if ((e.metaKey || e.ctrlKey) && sceneState.selectedObjectIds.length > 0) {
+            e.preventDefault();
+            handleCopy();
+          }
+          break;
+        case 'v':
+        case 'V':
+          if ((e.metaKey || e.ctrlKey) && clipboardRef.current && clipboardRef.current.length > 0) {
+            e.preventDefault();
+            handlePaste();
           }
           break;
         case 'd':
         case 'D':
-          if ((e.metaKey || e.ctrlKey) && sceneState.selectedObjectId) {
+          if ((e.metaKey || e.ctrlKey) && sceneState.selectedObjectIds.length > 0) {
             e.preventDefault();
             handleDuplicate();
           }
           break;
         case 'Escape':
-          if (sceneState.selectedObjectId) {
+          if (sceneState.selectedObjectIds.length > 0) {
             handleSelect(null);
           } else {
             handleBack();
@@ -180,8 +224,8 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [
-    sceneState.selectedObjectId, handleSetTransformMode, handleToggleGrid,
-    handleRemoveObject, handleDuplicate, handleSelect, handleBack,
+    sceneState.selectedObjectIds, handleSetTransformMode, handleToggleGrid,
+    handleRemoveObject, handleDuplicate, handleCopy, handlePaste, handleSelect, handleBack,
   ]);
 
   // Compute derived stats for toolbar
@@ -224,7 +268,7 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
         <SceneSidebar
           sceneState={sceneState}
           allFiles={allFiles}
-          onSelectObject={(id) => handleSelect(id)}
+          onSelectObject={handleSelect}
           onRemoveObject={handleRemoveObject}
           onAddFile={handleAddFile}
           onColorChange={handleColorChange}

@@ -71,7 +71,7 @@ export function useSceneManager(): UseSceneManagerReturn {
     setActiveScene({
       meta,
       objects,
-      selectedObjectId: null,
+      selectedObjectIds: [],
       transformMode: 'translate',
       changeVersion: objects.length > 0 ? 1 : 0,
       savedVersion: 0,
@@ -86,7 +86,7 @@ export function useSceneManager(): UseSceneManagerReturn {
     setActiveScene({
       meta,
       objects: rawObjects.map(objectDataToSceneObject),
-      selectedObjectId: null,
+      selectedObjectIds: [],
       transformMode: 'translate',
       changeVersion: 0,
       savedVersion: 0,

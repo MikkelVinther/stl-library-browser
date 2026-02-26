@@ -8,7 +8,7 @@ import { SceneSidebarFileCard } from './SceneSidebarFileCard';
 interface SceneSidebarProps {
   sceneState: SceneState;
   allFiles: STLFile[];
-  onSelectObject: (id: string) => void;
+  onSelectObject: (id: string, toggle?: boolean) => void;
   onRemoveObject: (id: string) => void;
   onAddFile: (file: STLFile) => void;
   onColorChange: (objectId: string, color: string) => void;
@@ -19,8 +19,11 @@ export function SceneSidebar({
 }: SceneSidebarProps) {
   const [search, setSearch] = useState('');
 
-  const { objects, selectedObjectId } = sceneState;
-  const selectedObject = objects.find((o) => o.id === selectedObjectId) ?? null;
+  const { objects, selectedObjectIds } = sceneState;
+  // Show color picker only for single selection
+  const selectedObject = selectedObjectIds.length === 1
+    ? objects.find((o) => o.id === selectedObjectIds[0]) ?? null
+    : null;
 
   const filtered = allFiles.filter((f) =>
     f.name.toLowerCase().includes(search.toLowerCase())
@@ -34,7 +37,7 @@ export function SceneSidebar({
         <div className="max-h-48 overflow-y-auto">
           <SceneObjectList
             objects={objects}
-            selectedObjectId={selectedObjectId}
+            selectedObjectIds={selectedObjectIds}
             onSelect={onSelectObject}
             onRemove={onRemoveObject}
           />

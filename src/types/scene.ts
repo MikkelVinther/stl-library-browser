@@ -37,7 +37,7 @@ export interface SceneObject extends SceneObjectData {
 export interface SceneState {
   meta: SceneMeta;
   objects: SceneObject[];
-  selectedObjectId: string | null;
+  selectedObjectIds: string[];
   transformMode: 'translate' | 'rotate' | 'scale';
   /** Increments on every persisted-field mutation. */
   changeVersion: number;

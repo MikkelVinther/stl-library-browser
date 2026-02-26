@@ -27,7 +27,7 @@ function makeScene(changeVersion = 1, savedVersion = 0): SceneState {
       cameraJson: null,
     },
     objects: [],
-    selectedObjectId: null,
+    selectedObjectIds: [],
     transformMode: 'translate',
     changeVersion,
     savedVersion,
