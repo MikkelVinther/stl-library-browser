@@ -4,6 +4,7 @@
  */
 
 import type { STLFile, DirectoryEntry, CategoryValues } from '../src/types/index';
+import type { SceneMeta, SceneObjectData } from '../src/types/scene';
 
 interface ElectronDB {
   getAllFiles: () => Promise<STLFile[]>;
@@ -20,6 +21,11 @@ interface ElectronDB {
   setCategoryValues: (fileId: string, values: CategoryValues) => Promise<void>;
   bulkSetCategoryValue: (fileIds: string[], categoryId: string, value: string) => Promise<void>;
   bulkSetCategoryValues: (entries: Array<{ fileId: string; categories: CategoryValues }>) => Promise<void>;
+  getAllScenes: () => Promise<SceneMeta[]>;
+  getScene: (id: string) => Promise<(SceneMeta & { objects: SceneObjectData[] }) | null>;
+  saveScene: (data: Partial<SceneMeta> & { id: string; name: string }) => Promise<void>;
+  saveSceneObjects: (sceneId: string, objects: SceneObjectData[]) => Promise<void>;
+  deleteScene: (id: string) => Promise<void>;
 }
 
 interface ElectronAPI {
