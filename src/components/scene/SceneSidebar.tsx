@@ -13,15 +13,18 @@ interface SceneSidebarProps {
   onRemoveObject: (id: string, fileId: string) => void;
   onAddFile: (file: STLFile) => void;
   onColorChange: (objectId: string, color: string) => void;
+  onRotate: (objectId: string, currentRotationY: number, deltaDeg: number) => void;
 }
 
+const ROTATION_STEPS = [-90, -180, 90, 180] as const;
+
 export function SceneSidebar({
-  sceneState, selectedIdSet, allFiles, onSelectObject, onRemoveObject, onAddFile, onColorChange,
+  sceneState, selectedIdSet, allFiles, onSelectObject, onRemoveObject, onAddFile, onColorChange, onRotate,
 }: SceneSidebarProps) {
   const [search, setSearch] = useState('');
 
   const { objects, selectedObjectIds } = sceneState;
-  // Show color picker only for single selection
+  // Show color/rotation controls only for single selection
   const selectedObject = selectedObjectIds.length === 1
     ? objects.find((o) => o.id === selectedObjectIds[0]) ?? null
     : null;
@@ -45,27 +48,47 @@ export function SceneSidebar({
         </div>
       </div>
 
-      {/* Selected object color */}
+      {/* Selected object controls */}
       {selectedObject && (
-        <div className="p-3 border-b border-[rgba(146,173,220,0.12)]">
-          <h3 className="ui-section-label mb-2">Color</h3>
-          <div className="flex items-center gap-2">
-            <input
-              type="color"
-              value={selectedObject.color ?? '#6090c0'}
-              onChange={(e) => onColorChange(selectedObject.id, e.target.value)}
-              className="w-8 h-8 rounded cursor-pointer bg-transparent border border-[rgba(146,173,220,0.24)] p-0.5"
-            />
-            <span className="text-xs text-faint">{selectedObject.color ?? '#6090c0'}</span>
-            {selectedObject.color && (
-              <button
-                onClick={() => onColorChange(selectedObject.id, '')}
-                className="p-1 text-faint hover:text-slate-200 transition-colors"
-                title="Reset to default color"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
+        <div className="p-3 border-b border-[rgba(146,173,220,0.12)] space-y-3">
+          {/* Color */}
+          <div>
+            <h3 className="ui-section-label mb-2">Color</h3>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={selectedObject.color ?? '#6090c0'}
+                onChange={(e) => onColorChange(selectedObject.id, e.target.value)}
+                className="w-8 h-8 rounded cursor-pointer bg-transparent border border-[rgba(146,173,220,0.24)] p-0.5"
+              />
+              <span className="text-xs text-faint">{selectedObject.color ?? '#6090c0'}</span>
+              {selectedObject.color && (
+                <button
+                  onClick={() => onColorChange(selectedObject.id, '')}
+                  className="p-1 text-faint hover:text-slate-200 transition-colors"
+                  title="Reset to default color"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Rotation */}
+          <div>
+            <h3 className="ui-section-label mb-2">Rotate</h3>
+            <div className="grid grid-cols-4 gap-1">
+              {ROTATION_STEPS.map((deg) => (
+                <button
+                  key={deg}
+                  onClick={() => onRotate(selectedObject.id, selectedObject.rotationY, deg)}
+                  className="ui-btn ui-btn-ghost py-1 text-xs font-mono"
+                  title={`Rotate ${deg > 0 ? '+' : ''}${deg}°`}
+                >
+                  {deg > 0 ? '+' : ''}{deg}°
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

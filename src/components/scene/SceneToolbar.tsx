@@ -19,6 +19,7 @@ interface SceneToolbarProps {
 const GRID_PRESETS = [
   { label: '12.7 mm (½")', value: 12.7 },
   { label: '25.4 mm (1")', value: 25.4 },
+  { label: '30 mm', value: 30 },
   { label: '50.8 mm (2")', value: 50.8 },
 ];
 

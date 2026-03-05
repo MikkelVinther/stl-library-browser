@@ -139,6 +139,11 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
     updateTransform(objectId, { color: color || null }, setSceneState);
   }, [updateTransform, setSceneState]);
 
+  const handleRotate = useCallback((objectId: string, currentRotationY: number, deltaDeg: number) => {
+    const newRotationY = currentRotationY + (deltaDeg * Math.PI / 180);
+    updateTransform(objectId, { rotationY: newRotationY }, setSceneState);
+  }, [updateTransform, setSceneState]);
+
   // Memoized Set for O(1) selection membership checks in render loops
   const selectedIdSet = useMemo(
     () => new Set(sceneState.selectedObjectIds),
@@ -279,6 +284,7 @@ export default function SceneBuilder({ sceneState, setSceneState, allFiles, onCl
           onRemoveObject={handleRemoveObject}
           onAddFile={handleAddFile}
           onColorChange={handleColorChange}
+          onRotate={handleRotate}
         />
       </div>
 
