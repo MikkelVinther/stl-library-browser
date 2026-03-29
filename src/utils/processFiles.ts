@@ -6,6 +6,7 @@ import { tokenizeFilename } from './filenameTokenizer';
 import { estimateWeight, getPrintSettings } from './printEstimate';
 import { readFile } from './electronBridge';
 import { classifyFile } from './categoryClassifier';
+import { toArrayBuffer } from './bufferUtils';
 import type { STLFile, FileInfo } from '../types/index';
 
 interface ProcessCallbacks {
@@ -50,7 +51,7 @@ export async function processFiles(fileInfos: FileInfo[], {
       if (fileInfo.fullPath) {
         const buffer = await readFile(fileInfo.fullPath);
         if (!buffer) throw new Error('File not found');
-        arrayBuffer = (buffer as unknown as { buffer: ArrayBuffer }).buffer ?? buffer;
+        arrayBuffer = toArrayBuffer(buffer);
       } else if (fileInfo._browserFile) {
         arrayBuffer = await fileInfo._browserFile.arrayBuffer();
       } else {

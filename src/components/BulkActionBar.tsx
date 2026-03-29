@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Layers } from 'lucide-react';
 import { CATEGORY_IDS, CATEGORY_LABELS } from '../utils/categoryClassifier';
 
 interface BulkActionBarProps {
@@ -9,6 +9,8 @@ interface BulkActionBarProps {
   onSetCategory: (catId: string, value: string) => void;
   onSelectAll: () => void;
   onClear: () => void;
+  onNewScene?: () => void;
+  hasFilesWithoutPath?: boolean;
 }
 
 export default function BulkActionBar({
@@ -18,6 +20,8 @@ export default function BulkActionBar({
   onSetCategory,
   onSelectAll,
   onClear,
+  onNewScene,
+  hasFilesWithoutPath = false,
 }: BulkActionBarProps) {
   const [tagInput, setTagInput] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
@@ -115,6 +119,20 @@ export default function BulkActionBar({
             <option key={catId} value={catId}>{CATEGORY_LABELS[catId]}</option>
           ))}
         </select>
+      )}
+
+      <div className="w-px h-6 bg-[rgba(146,173,220,0.24)]" />
+
+      {onNewScene && (
+        <button
+          onClick={onNewScene}
+          disabled={hasFilesWithoutPath}
+          title={hasFilesWithoutPath ? 'Some selected files are missing from disk and cannot be added to a scene' : 'Open selected files in scene builder'}
+          className="ui-btn ui-btn-secondary px-3 py-1.5 text-xs font-medium whitespace-nowrap flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Layers className="w-3.5 h-3.5" />
+          New Scene
+        </button>
       )}
 
       <div className="w-px h-6 bg-[rgba(146,173,220,0.24)]" />

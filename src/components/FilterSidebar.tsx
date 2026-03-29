@@ -1,6 +1,7 @@
 import { memo } from 'react';
-import { Search, X, Upload, FolderOpen } from 'lucide-react';
+import { Search, X, Upload, FolderOpen, Layers, Trash2, Plus } from 'lucide-react';
 import { CATEGORY_IDS, CATEGORY_LABELS } from '../utils/categoryClassifier';
+import type { SceneMeta } from '../types/scene';
 
 interface FilterSidebarProps {
   searchTerm: string;
@@ -16,6 +17,10 @@ interface FilterSidebarProps {
   onImportFiles: () => void;
   onOpenFolder: () => void;
   isMobile?: boolean;
+  scenes?: SceneMeta[];
+  onOpenScene?: (id: string) => void;
+  onDeleteScene?: (id: string) => void;
+  onNewEmptyScene?: () => void;
 }
 
 export const FilterSidebar = memo(function FilterSidebar({
@@ -25,6 +30,7 @@ export const FilterSidebar = memo(function FilterSidebar({
   activeFilterCount, onClearFilters,
   onImportFiles, onOpenFolder,
   isMobile = false,
+  scenes, onOpenScene, onDeleteScene, onNewEmptyScene,
 }: FilterSidebarProps) {
   return (
     <div className="space-y-6">
@@ -128,6 +134,49 @@ export const FilterSidebar = memo(function FilterSidebar({
         >
           Clear all filters
         </button>
+      )}
+
+      {(scenes !== undefined) && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="ui-section-label flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5" />
+              Scenes
+            </h3>
+            {onNewEmptyScene && (
+              <button
+                onClick={onNewEmptyScene}
+                title="New empty scene"
+                className="p-1 rounded-md text-faint hover:text-cyan-200 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          {scenes.length === 0 ? (
+            <p className="text-xs text-faint px-1">No scenes yet. Select files and click "New Scene".</p>
+          ) : (
+            <div className="space-y-1">
+              {scenes.map((scene) => (
+                <div key={scene.id} className="group flex items-center gap-1">
+                  <button
+                    onClick={() => onOpenScene?.(scene.id)}
+                    className="flex-1 text-left px-3 py-2 rounded-lg text-sm ui-chip hover:text-slate-100 truncate"
+                  >
+                    {scene.name}
+                  </button>
+                  <button
+                    onClick={() => onDeleteScene?.(scene.id)}
+                    title="Delete scene"
+                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md text-faint hover:text-red-400 transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

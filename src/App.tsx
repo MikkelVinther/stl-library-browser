@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, lazy, Suspense } from 'react';
 import { Box, Sun, Moon } from 'lucide-react';
 import ImportReviewPanel from './components/ImportReviewPanel';
 import ImportProgress from './components/ImportProgress';
@@ -9,14 +9,19 @@ import { MobileTopBar } from './components/MobileTopBar';
 import { MobileFilterDrawer } from './components/MobileFilterDrawer';
 import { FilterSidebar } from './components/FilterSidebar';
 import { FileGrid } from './components/FileGrid';
-import { FileDetailModal } from './components/FileDetailModal';
+import ErrorBoundary from './components/ErrorBoundary';
 import { useLibrary } from './hooks/useLibrary';
+
+const SceneBuilder = lazy(() => import('./components/scene/SceneBuilder'));
+const FileDetailModal = lazy(() => import('./components/FileDetailModal'));
 import { useFilters } from './hooks/useFilters';
 import { useSelection } from './hooks/useSelection';
 import { useImport } from './hooks/useImport';
 import { useFileDetail } from './hooks/useFileDetail';
 import { useDragDrop } from './hooks/useDragDrop';
 import { useTheme } from './hooks/useTheme';
+import { useSceneManager } from './hooks/useSceneManager';
+import type { STLFile } from './types/index';
 
 export default function App() {
   const {
@@ -24,6 +29,8 @@ export default function App() {
     allTags, categoryFacets,
     addFiles, updateFileInList, bulkAddTags, bulkSetCategory,
   } = useLibrary();
+
+  const { scenes, activeScene, createScene, openScene, closeScene, deleteScene, setActiveScene, refreshScenes } = useSceneManager();
 
   const {
     searchTerm, setSearchTerm, selectedTags, selectedCategories,
@@ -51,6 +58,13 @@ export default function App() {
 
   const onImportFiles = useCallback(() => fileInputRef.current?.click(), [fileInputRef]);
 
+  const handleNewScene = useCallback((selectedFiles: STLFile[]) => {
+    const validFiles = selectedFiles.filter((f) => f.fullPath !== null);
+    createScene('New Scene', validFiles.map((f) => ({
+      id: f.id, name: f.name, fullPath: f.fullPath, thumbnail: f.thumbnail,
+    })));
+  }, [createScene]);
+
   const filterSidebarProps = useMemo(() => ({
     searchTerm, onSearchChange: setSearchTerm,
     categoryFacets, selectedCategories, onToggleCategoryValue: toggleCategoryValue,
@@ -58,11 +72,35 @@ export default function App() {
     activeFilterCount, onClearFilters: clearFilters,
     onImportFiles,
     onOpenFolder: handleOpenFolder,
+    scenes,
+    onOpenScene: openScene,
+    onDeleteScene: deleteScene,
+    onNewEmptyScene: () => createScene('New Scene'),
   }), [
     searchTerm, setSearchTerm, categoryFacets, selectedCategories, toggleCategoryValue,
     allTags, selectedTags, toggleTag, activeFilterCount, clearFilters,
-    onImportFiles, handleOpenFolder,
+    onImportFiles, handleOpenFolder, scenes, openScene, deleteScene, createScene,
   ]);
+
+  if (activeScene) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={
+          <div className="flex items-center justify-center h-screen bg-[#0a1020]">
+            <div className="w-6 h-6 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin" />
+          </div>
+        }>
+          <SceneBuilder
+            sceneState={activeScene}
+            setSceneState={setActiveScene}
+            allFiles={files}
+            onClose={closeScene}
+            onRefreshScenes={refreshScenes}
+          />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <div className="app-shell" {...dragHandlers}>
@@ -162,30 +200,39 @@ export default function App() {
           onSetCategory={(catId, value) => bulkSetCategory(selectedIds, catId, value)}
           onSelectAll={selectAllFiltered}
           onClear={clearSelection}
+          onNewScene={() => {
+            const selectedFiles = filteredFiles.filter((f) => selectedIds.has(f.id));
+            handleNewScene(selectedFiles);
+          }}
+          hasFilesWithoutPath={filteredFiles.some((f) => selectedIds.has(f.id) && f.fullPath === null)}
         />
       )}
 
       {selectedFile && (
-        <FileDetailModal
-          file={selectedFile}
-          fileTagsEdit={fileTagsEdit}
-          fileCategoriesEdit={fileCategoriesEdit}
-          onCategoryChange={(catId, value) => setFileCategoriesEdit((prev) => ({ ...prev, [catId]: value }))}
-          newTag={newTag}
-          onNewTagChange={setNewTag}
-          viewerState={viewerState}
-          showPrintSettings={showPrintSettings}
-          onTogglePrintSettings={() => setShowPrintSettings((v) => !v)}
-          tagsChanged={tagsChanged}
-          categoriesChanged={categoriesChanged}
-          onClose={closeFile}
-          onLoad3D={handleLoad3D}
-          onAddTag={addEditTag}
-          onRemoveTag={removeEditTag}
-          onSaveTags={saveTags}
-          onSaveCategories={saveCategories}
-          onSavePrintSettings={savePrintSettings}
-        />
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <FileDetailModal
+              file={selectedFile}
+              fileTagsEdit={fileTagsEdit}
+              fileCategoriesEdit={fileCategoriesEdit}
+              onCategoryChange={(catId, value) => setFileCategoriesEdit((prev) => ({ ...prev, [catId]: value }))}
+              newTag={newTag}
+              onNewTagChange={setNewTag}
+              viewerState={viewerState}
+              showPrintSettings={showPrintSettings}
+              onTogglePrintSettings={() => setShowPrintSettings((v) => !v)}
+              tagsChanged={tagsChanged}
+              categoriesChanged={categoriesChanged}
+              onClose={closeFile}
+              onLoad3D={handleLoad3D}
+              onAddTag={addEditTag}
+              onRemoveTag={removeEditTag}
+              onSaveTags={saveTags}
+              onSaveCategories={saveCategories}
+              onSavePrintSettings={savePrintSettings}
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
     </div>
   );

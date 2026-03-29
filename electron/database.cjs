@@ -8,18 +8,47 @@ let dbPath;
 
 // ── Schema versioning ──────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /**
  * Incremental migration list. Each entry moves the database from (version-1) to (version).
  * NEVER modify existing entries — only append new ones.
- *
- * Example future migration:
- *   { version: 3, up(db) { db.exec('ALTER TABLE files ADD COLUMN starred INTEGER DEFAULT 0'); } }
  */
 const MIGRATIONS = [
   // Version 2 is the current baseline created by initSchema().
-  // Future incremental migrations go here.
+  {
+    version: 3,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS scenes (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          grid_size REAL NOT NULL DEFAULT 25.4,
+          grid_enabled INTEGER NOT NULL DEFAULT 0,
+          camera_json TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS scene_objects (
+          id TEXT PRIMARY KEY,
+          scene_id TEXT NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+          file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+          position_x REAL NOT NULL DEFAULT 0,
+          position_y REAL NOT NULL DEFAULT 0,
+          position_z REAL NOT NULL DEFAULT 0,
+          rotation_y REAL NOT NULL DEFAULT 0,
+          scale_x REAL NOT NULL DEFAULT 1,
+          scale_y REAL NOT NULL DEFAULT 1,
+          scale_z REAL NOT NULL DEFAULT 1,
+          color TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_scene_objects_scene ON scene_objects(scene_id);
+        CREATE INDEX IF NOT EXISTS idx_scene_objects_file ON scene_objects(file_id);
+      `);
+    },
+  },
 ];
 
 // ── Initialisation ─────────────────────────────────────────────────────────────
@@ -100,7 +129,7 @@ function migrateIfNeeded() {
 function initSchema() {
   database.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
-    INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION});
+    INSERT INTO schema_version (version) VALUES (3);
 
     CREATE TABLE IF NOT EXISTS directories (
       id TEXT PRIMARY KEY,
@@ -145,6 +174,33 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
     CREATE INDEX IF NOT EXISTS idx_catval_category ON category_values(category_id);
     CREATE INDEX IF NOT EXISTS idx_catval_value ON category_values(category_id, value);
+
+    CREATE TABLE IF NOT EXISTS scenes (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      grid_size REAL NOT NULL DEFAULT 25.4,
+      grid_enabled INTEGER NOT NULL DEFAULT 0,
+      camera_json TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS scene_objects (
+      id TEXT PRIMARY KEY,
+      scene_id TEXT NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+      file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      position_x REAL NOT NULL DEFAULT 0,
+      position_y REAL NOT NULL DEFAULT 0,
+      position_z REAL NOT NULL DEFAULT 0,
+      rotation_y REAL NOT NULL DEFAULT 0,
+      scale_x REAL NOT NULL DEFAULT 1,
+      scale_y REAL NOT NULL DEFAULT 1,
+      scale_z REAL NOT NULL DEFAULT 1,
+      color TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_scene_objects_scene ON scene_objects(scene_id);
+    CREATE INDEX IF NOT EXISTS idx_scene_objects_file ON scene_objects(file_id);
   `);
 }
 
@@ -417,4 +473,106 @@ exports.saveDirectory = (data) => {
 exports.deleteDirectory = (id) => {
   const db = getDB();
   db.prepare('DELETE FROM directories WHERE id = ?').run(id);
+};
+
+// ── Scene CRUD ────────────────────────────────────────────────────────────────
+
+exports.getAllScenes = () => {
+  const db = getDB();
+  const rows = db.prepare('SELECT * FROM scenes ORDER BY updated_at DESC').all();
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    gridSize: r.grid_size,
+    gridEnabled: r.grid_enabled === 1,
+    cameraJson: r.camera_json,
+  }));
+};
+
+exports.getScene = (id) => {
+  const db = getDB();
+  const scene = db.prepare('SELECT * FROM scenes WHERE id = ?').get(id);
+  if (!scene) return null;
+
+  const objects = db.prepare(`
+    SELECT so.*, f.name AS file_name, f.full_path AS file_full_path,
+           f.thumbnail AS file_thumbnail, f.metadata_json AS file_metadata_json
+    FROM scene_objects so
+    JOIN files f ON f.id = so.file_id
+    WHERE so.scene_id = ?
+    ORDER BY so.sort_order ASC
+  `).all(id);
+
+  return {
+    id: scene.id,
+    name: scene.name,
+    createdAt: scene.created_at,
+    updatedAt: scene.updated_at,
+    gridSize: scene.grid_size,
+    gridEnabled: scene.grid_enabled === 1,
+    cameraJson: scene.camera_json,
+    objects: objects.map((o) => ({
+      id: o.id,
+      sceneId: o.scene_id,
+      fileId: o.file_id,
+      position: [o.position_x, o.position_y, o.position_z],
+      rotationY: o.rotation_y,
+      scale: [o.scale_x, o.scale_y, o.scale_z],
+      color: o.color,
+      sortOrder: o.sort_order,
+      fileName: o.file_name,
+      fileFullPath: o.file_full_path,
+      fileThumbnail: o.file_thumbnail,
+      fileMetadataJson: o.file_metadata_json,
+    })),
+  };
+};
+
+exports.saveScene = (data) => {
+  const db = getDB();
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO scenes (id, name, created_at, updated_at, grid_size, grid_enabled, camera_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      updated_at = excluded.updated_at,
+      grid_size = excluded.grid_size,
+      grid_enabled = excluded.grid_enabled,
+      camera_json = excluded.camera_json
+  `).run(
+    data.id, data.name,
+    data.createdAt || now, data.updatedAt || now,
+    data.gridSize ?? 25.4, data.gridEnabled ? 1 : 0,
+    data.cameraJson || null,
+  );
+};
+
+exports.saveSceneObjects = (sceneId, objects) => {
+  const db = getDB();
+  db.transaction(() => {
+    db.prepare('DELETE FROM scene_objects WHERE scene_id = ?').run(sceneId);
+    const insert = db.prepare(`
+      INSERT INTO scene_objects
+        (id, scene_id, file_id, position_x, position_y, position_z,
+         rotation_y, scale_x, scale_y, scale_z, color, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const o of objects) {
+      insert.run(
+        o.id, sceneId, o.fileId,
+        o.position[0], o.position[1], o.position[2],
+        o.rotationY,
+        o.scale[0], o.scale[1], o.scale[2],
+        o.color || null, o.sortOrder ?? 0,
+      );
+    }
+  })();
+};
+
+exports.deleteScene = (id) => {
+  const db = getDB();
+  db.prepare('DELETE FROM scenes WHERE id = ?').run(id);
 };

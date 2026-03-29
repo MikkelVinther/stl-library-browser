@@ -1,4 +1,5 @@
 import type { STLFile, DirectoryEntry, CategoryValues, FileInfo } from '../types/index';
+import type { SceneMeta, SceneObjectData } from '../types/scene';
 
 /**
  * Returns window.electronAPI, throwing a descriptive error if it isn't defined.
@@ -92,4 +93,26 @@ export const bulkSetCategoryValue = (fileIds: string[], categoryId: string, valu
 export const bulkSetCategoryValues = (entries: Array<{ fileId: string; categories: CategoryValues }>): Promise<void> => {
   try { return getAPI().db.bulkSetCategoryValues(entries); }
   catch (e) { console.error('[electronBridge] bulkSetCategoryValues failed:', e); return Promise.resolve(); }
+};
+
+// Scene CRUD
+export const getAllScenes = (): Promise<SceneMeta[]> => {
+  try { return getAPI().db.getAllScenes(); }
+  catch (e) { console.error('[electronBridge] getAllScenes failed:', e); return Promise.resolve([]); }
+};
+export const getScene = (id: string): Promise<(SceneMeta & { objects: SceneObjectData[] }) | null> => {
+  try { return getAPI().db.getScene(id); }
+  catch (e) { console.error('[electronBridge] getScene failed:', e); return Promise.resolve(null); }
+};
+export const saveScene = (data: Partial<SceneMeta> & { id: string; name: string }): Promise<void> => {
+  try { return getAPI().db.saveScene(data); }
+  catch (e) { console.error('[electronBridge] saveScene failed:', e); return Promise.resolve(); }
+};
+export const saveSceneObjects = (sceneId: string, objects: SceneObjectData[]): Promise<void> => {
+  try { return getAPI().db.saveSceneObjects(sceneId, objects); }
+  catch (e) { console.error('[electronBridge] saveSceneObjects failed:', e); return Promise.resolve(); }
+};
+export const deleteScene = (id: string): Promise<void> => {
+  try { return getAPI().db.deleteScene(id); }
+  catch (e) { console.error('[electronBridge] deleteScene failed:', e); return Promise.resolve(); }
 };

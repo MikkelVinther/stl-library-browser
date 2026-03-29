@@ -27,7 +27,7 @@ interface FileDetailModalProps {
   onSavePrintSettings: (settings: PrintSettings) => void;
 }
 
-export function FileDetailModal({
+export default function FileDetailModal({
   file, fileTagsEdit, fileCategoriesEdit, onCategoryChange,
   newTag, onNewTagChange, viewerState,
   showPrintSettings, onTogglePrintSettings,
